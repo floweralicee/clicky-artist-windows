@@ -7,6 +7,11 @@ from ai.base_provider import BaseLLMProvider, Message
 from ai.ollama_models_registry import is_vision_capable
 from config import cfg
 
+OLLAMA_SETUP_MESSAGE = (
+    "clicky needs ollama to run.\n"
+    "visit floweralice.me/clicky for setup instructions."
+)
+
 
 class OllamaProvider(BaseLLMProvider):
     """
@@ -22,8 +27,7 @@ class OllamaProvider(BaseLLMProvider):
 
     def __init__(self):
         self._base = cfg.ollama_host.rstrip("/")
-        # Kept for backward compat with old code paths reading self._model
-        self._model = cfg.ollama_model
+        self._model = cfg.get_ollama_model("vision")
 
     def _pick_model(self, has_screenshots: bool) -> str:
         return cfg.get_ollama_model("vision" if has_screenshots else "text")
@@ -62,34 +66,35 @@ class OllamaProvider(BaseLLMProvider):
             "options": {"num_predict": 1024},
         }
 
-        async with httpx.AsyncClient(timeout=120) as client:
-            async with client.stream(
-                "POST",
-                f"{self._base}/api/chat",
-                json=payload,
-            ) as response:
-                if response.status_code == 404:
-                    # Surface a useful error when the chosen model isn't
-                    # installed locally — students hit this constantly.
-                    raise RuntimeError(
-                        f"Ollama doesn't have '{chosen}' installed. "
-                        f"Run `ollama pull {chosen}` or pick another model "
-                        f"from Tray → Ollama."
-                    )
-                response.raise_for_status()
-                import json
-                async for line in response.aiter_lines():
-                    if not line.strip():
-                        continue
-                    try:
-                        data = json.loads(line)
-                        chunk = data.get("message", {}).get("content", "")
-                        if chunk:
-                            yield chunk
-                        if data.get("done"):
-                            break
-                    except json.JSONDecodeError:
-                        continue
+        try:
+            async with httpx.AsyncClient(timeout=120) as client:
+                async with client.stream(
+                    "POST",
+                    f"{self._base}/api/chat",
+                    json=payload,
+                ) as response:
+                    if response.status_code == 404:
+                        raise RuntimeError(
+                            f"Ollama doesn't have '{chosen}' installed. "
+                            f"Run `ollama pull {chosen}` or pick another model "
+                            f"from Tray → Ollama."
+                        )
+                    response.raise_for_status()
+                    import json
+                    async for line in response.aiter_lines():
+                        if not line.strip():
+                            continue
+                        try:
+                            data = json.loads(line)
+                            chunk = data.get("message", {}).get("content", "")
+                            if chunk:
+                                yield chunk
+                            if data.get("done"):
+                                break
+                        except json.JSONDecodeError:
+                            continue
+        except (httpx.ConnectError, httpx.ConnectTimeout, OSError):
+            raise RuntimeError(OLLAMA_SETUP_MESSAGE) from None
 
     async def health_check(self) -> bool:
         try:

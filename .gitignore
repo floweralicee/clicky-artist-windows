@@ -6,8 +6,7 @@ __pycache__/
 .venv/
 venv/
 
-# Environment / secrets
-.env
+# Environment / secrets (local overrides only — .env ships with the app)
 .env.local
 .env.*.local
 

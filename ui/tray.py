@@ -30,9 +30,6 @@ class TrayManager(QObject):
     on_toggle_slow_mode   = pyqtSignal(bool)
     on_toggle_quiz_mode   = pyqtSignal(bool)
     on_toggle_privacy     = pyqtSignal(bool)
-    on_switch_provider    = pyqtSignal(str)     # "claude" | "openai" | "copilot" | ...
-    on_copilot_login      = pyqtSignal()
-    on_copilot_refresh    = pyqtSignal()
     on_ollama_set_model   = pyqtSignal(str, str)   # (kind, name): kind = "vision" | "text"
     on_ollama_pull        = pyqtSignal(str)        # model name
     on_ollama_refresh     = pyqtSignal()
@@ -43,8 +40,6 @@ class TrayManager(QObject):
     on_toggle_ocr         = pyqtSignal(bool)
     on_record_start       = pyqtSignal()
     on_record_stop        = pyqtSignal()
-    on_collab_start       = pyqtSignal()
-    on_collab_join        = pyqtSignal()
     on_workflow_start     = pyqtSignal()
     on_workflow_stop      = pyqtSignal()
     on_journal_open       = pyqtSignal()
@@ -55,7 +50,6 @@ class TrayManager(QObject):
     def __init__(self, parent=None):
         super().__init__(parent)
 
-        # Icons MUST be created after QApplication exists
         self._icons = {
             "idle":      _make_tray_icon(QColor(80, 80, 120)),
             "listening": _make_tray_icon(QColor(50, 200, 100)),
@@ -66,7 +60,7 @@ class TrayManager(QObject):
         self._tray = QSystemTrayIcon()
         self._tray.setIcon(self._icons["idle"])
         self._tray.setToolTip(
-            f"Clicky - AI Companion\nHold {cfg.hotkey} to speak"
+            "Clicky for Animators — hold Ctrl+Alt+Space to ask"
         )
         self._search_enabled = True
         self._wake_enabled = True
@@ -79,7 +73,6 @@ class TrayManager(QObject):
         self._ocr_enabled = True
         self._is_recording = False
 
-        # Ollama model state — populated by manager via set_ollama_models()
         self._ollama_installed: dict[str, list[str]] = {"vision": [], "text": []}
 
         self._build_menu()
@@ -96,11 +89,6 @@ class TrayManager(QObject):
         )
 
         providers = cfg.describe()
-        info = menu.addAction(
-            f"LLM: {providers['llm']}  |  STT: {providers['stt']}  |  TTS: {providers['tts']}"
-        )
-        info.setEnabled(False)
-        menu.addSeparator()
 
         show_action = menu.addAction("Show Panel")
         show_action.triggered.connect(self.on_show_panel)
@@ -113,20 +101,6 @@ class TrayManager(QObject):
 
         menu.addSeparator()
 
-        # Model switcher submenu
-        switch_menu = menu.addMenu(f"Model: {providers['llm']}")
-        active = providers['llm']
-        for name in cfg.available_llm_providers():
-            label = f"● {name}" if name == active else f"  {name}"
-            act = switch_menu.addAction(label)
-            act.triggered.connect(lambda _=False, n=name: self.on_switch_provider.emit(n))
-        switch_menu.addSeparator()
-        login_act = switch_menu.addAction("Sign in to GitHub Copilot…")
-        login_act.triggered.connect(self.on_copilot_login)
-        refresh_act = switch_menu.addAction("Refresh Copilot models")
-        refresh_act.triggered.connect(self.on_copilot_refresh)
-
-        # ── Ollama-specific submenu (always visible — Ollama is the offline fallback) ──
         self._build_ollama_submenu(menu, providers)
 
         menu.addSeparator()
@@ -147,7 +121,6 @@ class TrayManager(QObject):
         wake_action.triggered.connect(self._toggle_wake)
         self._wake_action = wake_action
 
-        # ── Tutor toggles ──
         menu.addSeparator()
         tutor_menu = menu.addMenu("Tutor Mode")
 
@@ -201,7 +174,6 @@ class TrayManager(QObject):
         ocr_action.triggered.connect(self._toggle_ocr)
         self._ocr_action = ocr_action
 
-        # ── Journal ──
         menu.addSeparator()
         journal_menu = menu.addMenu("Journal")
 
@@ -219,7 +191,6 @@ class TrayManager(QObject):
         attach = journal_menu.addAction("Attach document (PDF / TXT / DOCX)…")
         attach.triggered.connect(self.on_attach_doc)
 
-        # ── Recording ──
         rec_menu = menu.addMenu("Lesson Recording")
         if self._is_recording:
             stop_rec = rec_menu.addAction("● Stop recording")
@@ -228,27 +199,14 @@ class TrayManager(QObject):
             start_rec = rec_menu.addAction("Start recording")
             start_rec.triggered.connect(self.on_record_start)
 
-        # ── Workflow capture ──
         wf_menu = menu.addMenu("Workflow Capture")
         wf_start = wf_menu.addAction("Start capturing my clicks")
         wf_start.triggered.connect(self.on_workflow_start)
         wf_stop  = wf_menu.addAction("Stop + send to Clicky")
         wf_stop.triggered.connect(self.on_workflow_stop)
 
-        # ── Live collaboration ──
-        # NOTE: WebRTC signalling server isn't shipped yet, so this whole
-        # menu is hidden until tutor_features/collab.py gets a real backend.
-        # The signals are still defined on this object so any existing
-        # bindings in main.py don't crash on connect().
-        # collab_menu = menu.addMenu("Live Session")  # disabled in this build
-        # host = collab_menu.addAction("Start hosting")
-        # host.triggered.connect(self.on_collab_start)
-        # join = collab_menu.addAction("Join with code…")
-        # join.triggered.connect(self.on_collab_join)
-
         menu.addSeparator()
 
-        # ── Setup / Diagnostics ──
         setup_menu = menu.addMenu("Setup && Diagnostics")
         run_setup = setup_menu.addAction("Run setup wizard again…")
         run_setup.triggered.connect(self.on_run_setup)
@@ -261,7 +219,6 @@ class TrayManager(QObject):
         quit_action.triggered.connect(self.on_quit)
 
         self._tray.setContextMenu(menu)
-        # Keep refs to prevent GC
         self._menu = menu
 
     def _build_ollama_submenu(self, parent_menu: QMenu, providers: dict):
@@ -274,7 +231,6 @@ class TrayManager(QObject):
         active_vision = providers.get("ollama_vision_model", "")
         active_text   = providers.get("ollama_text_model", "")
 
-        # ─ Vision model picker ─
         v_menu = ol_menu.addMenu(f"Vision model: {active_vision or '(none)'}")
         installed_vision = self._ollama_installed.get("vision", [])
         if installed_vision:
@@ -288,7 +244,6 @@ class TrayManager(QObject):
             empty = v_menu.addAction("(no vision models installed)")
             empty.setEnabled(False)
 
-        # ─ Text model picker ─
         t_menu = ol_menu.addMenu(f"Text model: {active_text or '(none)'}")
         installed_text = self._ollama_installed.get("text", [])
         if installed_text:
@@ -304,7 +259,6 @@ class TrayManager(QObject):
 
         ol_menu.addSeparator()
 
-        # ─ Pull recommended ─
         pull_menu = ol_menu.addMenu("Pull recommended…")
         already = set(installed_vision) | set(installed_text)
 
@@ -312,7 +266,6 @@ class TrayManager(QObject):
             hdr = pull_menu.addAction(header)
             hdr.setEnabled(False)
             for rec in rec_list:
-                # Mark already-installed entries (matching by tag prefix)
                 installed = any(n == rec.name or n.startswith(rec.name.split(":")[0] + ":") for n in already)
                 tag = "✓ " if installed else "  "
                 label = f"{tag}{rec.label}  ·  {rec.size}  —  {rec.blurb}"
@@ -416,7 +369,6 @@ class TrayManager(QObject):
         self._tray.setIcon(self._icons.get(state, self._icons["idle"]))
 
     def rebuild_menu(self):
-        """Rebuild so the Model submenu reflects the newly-active provider."""
         self._build_menu()
 
     def show_notification(self, title: str, message: str):

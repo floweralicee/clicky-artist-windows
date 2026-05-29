@@ -28,46 +28,14 @@ STATE_TO_CURSOR_MODE = {
 }
 
 
-def _copilot_login_flow(tray, panel, manager):
-    """Run the GitHub device-flow login in a worker thread so the UI stays live."""
-    import asyncio, threading
-    from ai.github_copilot_provider import device_login
-
-    def _on_code(user_code: str, verification_uri: str):
-        """Called as soon as the device code arrives — display it in the panel."""
-        msg = (
-            f"GitHub Copilot Sign-In\n\n"
-            f"1. Visit: {verification_uri}\n"
-            f"2. Enter code:  {user_code}\n"
-            f"3. Click Authorize — Clicky will sign in automatically."
-        )
-        # Show in panel (cross-thread safe via Qt signal)
-        panel.show_copilot_code(user_code, verification_uri)
-        tray.show_notification("GitHub Copilot — enter this code", user_code)
-
-    def _worker():
-        try:
-            asyncio.run(device_login(on_code=_on_code))
-            tray.show_notification(
-                "GitHub Copilot",
-                "Signed in! Refreshing model list…"
-            )
-            manager.refresh_copilot_models()
-        except Exception as e:
-            tray.show_notification("Copilot login failed", str(e))
-            panel.show_copilot_error(str(e))
-
-    threading.Thread(target=_worker, daemon=True).start()
-
-
 def main():
     QApplication.setHighDpiScaleFactorRoundingPolicy(
         Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
     )
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
-    app.setApplicationName("Clicky")
-    app.setApplicationDisplayName("Clicky - AI Companion")
+    app.setApplicationName("Clicky for Animators")
+    app.setApplicationDisplayName("Clicky for Animators")
 
     # ── Core components ───────────────────────────────────────────────────────
     manager = CompanionManager()
@@ -103,10 +71,17 @@ def main():
     manager.sig_underline.connect(overlay.add_underline)
     manager.sig_label.connect(overlay.add_text)
 
-    # Errors
+    # Errors (not Ollama setup — that goes to the panel)
     manager.sig_error.connect(
         lambda e: tray.show_notification("Clicky error", str(e))
     )
+
+    def _on_setup_message(message: str):
+        panel.show()
+        panel.clear_response()
+        panel.update_response(message)
+
+    manager.sig_setup_message.connect(_on_setup_message)
 
     # Panel → Manager
     panel.on_model_changed.connect(manager.set_model)
@@ -172,16 +147,6 @@ def main():
     tray.on_workflow_start.connect(_wf_start)
     tray.on_workflow_stop.connect(_wf_stop)
 
-    # Live collab
-    tray.on_collab_start.connect(manager.collab_start_host)
-    def _collab_join():
-        from PyQt6.QtWidgets import QInputDialog
-        code, ok = QInputDialog.getText(None, "Join Live Session",
-                                        "Enter 6-character session code:")
-        if ok and code:
-            manager.collab_join(code.strip())
-    tray.on_collab_join.connect(_collab_join)
-
     # Journal folder
     def _open_journal():
         import os, subprocess
@@ -209,36 +174,9 @@ def main():
             )
     tray.on_attach_doc.connect(_attach_doc)
 
-    def _switch(name: str):
-        manager.set_active_provider(name)
-        panel.refresh_for_provider(name)       # repopulate model dropdown + badge
-        tray.rebuild_menu()                    # tick mark moves to new provider
-        tray.show_notification("Clicky", f"Switched to {name}")
-
-    tray.on_switch_provider.connect(_switch)
     tray.on_stop.connect(manager.stop)
-    tray.on_copilot_login.connect(lambda: _copilot_login_flow(tray, panel, manager))
-    tray.on_copilot_refresh.connect(manager.refresh_copilot_models)
 
-    # When the live model list arrives, repopulate the panel + show a toast
-    def _on_copilot_models_done(count: int):
-        if cfg.llm_provider() == "copilot":
-            panel.refresh_for_provider("copilot")
-        tray.show_notification(
-            "GitHub Copilot",
-            f"Loaded {count} models from your seat. Free models are tagged "
-            f"in the Model dropdown."
-        )
-    manager.sig_copilot_models_done.connect(_on_copilot_models_done)
-
-    # Live model auto-refresh for Claude / OpenAI / Gemini (30-day cache).
-    # Repopulate the panel whenever a refresh lands.
-    def _on_models_refreshed(provider: str, count: int):
-        if cfg.llm_provider() == provider:
-            panel.refresh_for_provider(provider)
-    manager.sig_models_refreshed.connect(_on_models_refreshed)
-
-    # ── Ollama multi-model wiring ─────────────────────────────────────────
+    # Ollama multi-model wiring
     tray.on_ollama_set_model.connect(manager.set_ollama_model)
     tray.on_ollama_pull.connect(manager.pull_ollama_model)
     tray.on_ollama_refresh.connect(manager.refresh_ollama_models)
@@ -251,10 +189,8 @@ def main():
         tray.show_notification("Ollama", status)
     manager.sig_ollama_pull_status.connect(_on_ollama_pull_status)
 
-    # First-run: poll Ollama if it's the active provider so the menu
-    # actually shows installed models from the start.
-    if cfg.llm_provider() == "ollama":
-        manager.refresh_ollama_models()
+    # First-run: poll Ollama so the tray menu shows installed models.
+    manager.refresh_ollama_models()
 
     # Setup wizard (re-run) + diagnostics
     def _run_setup_again():
@@ -330,8 +266,8 @@ def main():
 
     providers = cfg.describe()
     tray.show_notification(
-        "Clicky is running",
-        f"Say 'Clicky' or hold {cfg.hotkey}  |  LLM: {providers['llm']}",
+        "Clicky for Animators",
+        f"Hold {cfg.hotkey} to ask  |  Ollama + Faster-Whisper + Edge TTS",
     )
 
     # ── First-run setup wizard ────────────────────────────────────────────────

@@ -84,8 +84,15 @@ ABSOLUTE QUIZ RULES (override everything else):
 STYLE: short, friendly, never more than 2 sentences. End every turn with a
 question mark."""
 
-    return f"""You are Clicky, a VISUAL AI tutor running on Windows. You live
-next to the user's cursor. Your job is to *show*, not just tell.
+    return f"""You are an animation mentor and teacher. You help professional
+animators and animation students with software including Maya,
+After Effects, Blender, Toon Boom Harmony, Premiere Pro,
+DaVinci Resolve, and Nuke. You can see the animator's screen.
+When they ask about something on screen, describe exactly what
+you see and give clear, step-by-step instructions. Use animation
+industry terminology correctly. Keep answers concise — animators
+are busy and on deadline. When pointing at UI elements on screen,
+be precise about the exact location.
 
 {chr(10).join(ctx_lines)}
 
@@ -209,6 +216,7 @@ class CompanionManager(QObject):
     sig_point_hold          = pyqtSignal(bool)            # True → dwell forever until release
     sig_point_release       = pyqtSignal()                # end dwell + fly buddy back
     sig_error               = pyqtSignal(str)
+    sig_setup_message       = pyqtSignal(str)
     sig_copilot_models_done = pyqtSignal(int)             # arg = model count
     sig_models_refreshed    = pyqtSignal(str, int)        # (provider, count)
     sig_ollama_models       = pyqtSignal(dict)            # {"vision": [...], "text": [...]}
@@ -282,9 +290,15 @@ class CompanionManager(QObject):
             self.sig_error.emit(f"Mic error: {e}")
         # Sleep/wake watchdog — restarts mic + loop after system resume
         self._start_sleep_watchdog()
-        # On startup, refresh any stale model cache in the background.
-        # 30-day TTL means this is a once-a-month no-op for most launches.
+        # On startup, check Ollama and surface a friendly panel message if down.
+        self._submit(self._check_ollama_health())
+        # Refresh any stale model cache in the background.
         self._submit(self._refresh_stale_models())
+
+    async def _check_ollama_health(self):
+        from ai.ollama_provider import OLLAMA_SETUP_MESSAGE
+        if not await self._get_llm().health_check():
+            self.sig_setup_message.emit(OLLAMA_SETUP_MESSAGE)
 
     async def _refresh_stale_models(self):
         try:
@@ -363,58 +377,20 @@ class CompanionManager(QObject):
 
     def _get_llm(self) -> BaseLLMProvider:
         if self._llm is None:
-            provider = cfg.llm_provider()
-            if provider == "claude":
-                from ai.claude_provider import ClaudeProvider
-                self._llm = ClaudeProvider()
-            elif provider == "openai":
-                from ai.openai_provider import OpenAIProvider
-                self._llm = OpenAIProvider()
-            elif provider == "gemini":
-                from ai.gemini_provider import GeminiProvider
-                self._llm = GeminiProvider()
-            elif provider == "copilot":
-                from ai.github_copilot_provider import GitHubCopilotProvider
-                self._llm = GitHubCopilotProvider()
-            else:
-                from ai.ollama_provider import OllamaProvider
-                self._llm = OllamaProvider()
+            from ai.ollama_provider import OllamaProvider
+            self._llm = OllamaProvider()
         return self._llm
 
     def _get_stt(self):
         if self._stt is None:
-            provider = cfg.stt_provider()
-            if provider == "deepgram":
-                from audio.stt.deepgram_stt import DeepgramSTT
-                self._stt = DeepgramSTT()
-            elif provider == "openai":
-                from audio.stt.openai_stt import OpenAISTT
-                self._stt = OpenAISTT()
-            elif provider == "whisper_cpp":
-                try:
-                    from audio.stt.whisper_cpp_stt import WhisperCppSTT
-                    self._stt = WhisperCppSTT()
-                except ImportError:
-                    # pywhispercpp missing → fall back silently
-                    from audio.stt.faster_whisper_stt import FasterWhisperSTT
-                    self._stt = FasterWhisperSTT()
-            else:
-                from audio.stt.faster_whisper_stt import FasterWhisperSTT
-                self._stt = FasterWhisperSTT()
+            from audio.stt.faster_whisper_stt import FasterWhisperSTT
+            self._stt = FasterWhisperSTT()
         return self._stt
 
     def _get_tts(self):
         if self._tts is None:
-            provider = cfg.tts_provider()
-            if provider == "elevenlabs":
-                from audio.tts.elevenlabs_provider import ElevenLabsProvider
-                self._tts = ElevenLabsProvider()
-            elif provider == "openai":
-                from audio.tts.openai_tts_provider import OpenAITTSProvider
-                self._tts = OpenAITTSProvider()
-            else:
-                from audio.tts.edge_tts_provider import EdgeTTSProvider
-                self._tts = EdgeTTSProvider()
+            from audio.tts.edge_tts_provider import EdgeTTSProvider
+            self._tts = EdgeTTSProvider()
         return self._tts
 
     # ── Input sources ─────────────────────────────────────────────────────────
@@ -524,6 +500,11 @@ class CompanionManager(QObject):
             except Exception as e:
                 self.sig_error.emit(f"Skill error: {e}")
 
+            from ai.ollama_provider import OLLAMA_SETUP_MESSAGE
+            if not await self._get_llm().health_check():
+                self.sig_setup_message.emit(OLLAMA_SETUP_MESSAGE)
+                return
+
             # 2. Screen capture — skipped if sensitive window (password manager etc.)
             #
             # ALSO skipped for "who is X" / "tell me about X" identity questions:
@@ -578,23 +559,8 @@ class CompanionManager(QObject):
                     async def _ready(t=target):
                         return (t.x, t.y)
                     locate_task = asyncio.create_task(_ready())
-                elif cfg.anthropic_api_key:
-                    # Path A — Anthropic Computer Use (best accuracy)
-                    from ai.element_locator import detect_element
-                    locate_task = asyncio.create_task(detect_element(
-                        screenshot_jpeg_b64=shot.base64_jpeg,
-                        original_width=shot.width,
-                        original_height=shot.height,
-                        physical_width=shot.physical_width,
-                        physical_height=shot.physical_height,
-                        physical_left=shot.physical_left,
-                        physical_top=shot.physical_top,
-                        dpi_scale=shot.dpi_scale,
-                        screen_index=shot.index,
-                        user_question=transcript,
-                    ))
                 else:
-                    # Path B — Universal grid locator (any vision LLM)
+                    # Universal grid locator (Ollama vision)
                     try:
                         from ai.universal_locator import detect_element_universal
                         llm = self._get_llm()
@@ -779,7 +745,11 @@ class CompanionManager(QObject):
                 pass
 
         except Exception as e:
-            self.sig_error.emit(str(e))
+            from ai.ollama_provider import OLLAMA_SETUP_MESSAGE
+            if str(e).strip() == OLLAMA_SETUP_MESSAGE.strip():
+                self.sig_setup_message.emit(OLLAMA_SETUP_MESSAGE)
+            else:
+                self.sig_error.emit(str(e))
 
         finally:
             if pointing_held:

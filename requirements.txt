@@ -8,9 +8,7 @@ Pillow>=10.0.0
 # Global hotkeys
 keyboard>=0.13.5
 
-# AI providers
-anthropic>=0.34.0
-openai>=1.40.0
+# Local LLM (Ollama HTTP API also uses httpx directly)
 ollama>=0.3.0
 
 # Audio capture + playback (no PyAudio — fails to build on Py 3.14)
@@ -22,15 +20,8 @@ av>=12.0.0
 # STT - local (free)
 faster-whisper>=1.0.0
 
-# STT - whisper.cpp via pywhispercpp (3-5x faster, same engine as Handy)
-# Optional — if installed, Clicky auto-picks this over faster-whisper.
-# pywhispercpp>=1.2.0
-
 # TTS - free
 edge-tts>=6.1.10
-
-# TTS - premium (optional)
-elevenlabs>=1.0.0
 
 # Web search
 tavily-python>=0.3.0

@@ -87,11 +87,7 @@ class WaveformWidget(QWidget):
 
 
 PROVIDER_LABELS = {
-    "claude":  "Claude",
-    "openai":  "GPT-4o",
-    "gemini":  "Gemini",
-    "copilot": "Copilot",
-    "ollama":  f"Ollama ({cfg.ollama_model})",
+    "ollama": f"Ollama ({cfg.get_ollama_model('vision')})",
 }
 
 # Provider model lists are fetched live from each vendor's /models endpoint
@@ -185,10 +181,13 @@ class CompanionPanel(QWidget):
 
         # Header
         header = QHBoxLayout()
-        title = QLabel("Clicky")
+        title = QLabel("clicky 🎨")
         title.setObjectName("title")
         title.setFont(FONT_TITLE)
         header.addWidget(title)
+        about = QLabel("AI animation mentor · floweralice.me/clicky")
+        about.setStyleSheet("color: rgb(100,100,120); font-size: 10px;")
+        header.addWidget(about)
         header.addStretch()
         provider = cfg.llm_provider()
         self._badge = ProviderBadge(provider)
@@ -293,7 +292,8 @@ class CompanionPanel(QWidget):
             except Exception:
                 self._model_combo.addItem("default", userData="default")
         else:   # ollama
-            self._model_combo.addItem(cfg.ollama_model, userData=cfg.ollama_model)
+            vision_model = cfg.get_ollama_model("vision")
+            self._model_combo.addItem(vision_model, userData=vision_model)
         self._model_combo.blockSignals(False)
         # Fire once with the new default model id (NOT the display label) so
         # the manager picks it up — important when label != id.
