@@ -14,14 +14,13 @@ signal-to-noise, faster, cleaner summaries).
 from __future__ import annotations
 
 import asyncio
+import os
 import re
 from html import unescape
 from typing import List, Tuple
 from urllib.parse import quote_plus, unquote, urlparse, parse_qs
 
 import httpx
-
-from config import cfg
 
 
 USER_AGENT = (
@@ -42,7 +41,7 @@ async def search(query: str, max_results: int = MAX_PAGES) -> str:
     if not query:
         return ""
 
-    if cfg.search_provider() == "tavily":
+    if os.getenv("TAVILY_API_KEY"):
         try:
             return await _tavily(query, max_results)
         except Exception:
@@ -67,7 +66,7 @@ def build_search_context(results: str) -> str:
 async def _tavily(query: str, max_results: int) -> str:
     url = "https://api.tavily.com/search"
     payload = {
-        "api_key": cfg.tavily_api_key,
+        "api_key": os.getenv("TAVILY_API_KEY"),
         "query": query,
         "search_depth": "advanced",
         "max_results": max_results,

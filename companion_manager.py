@@ -15,8 +15,8 @@ from typing import List, Optional
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
-from config import cfg
-from ai.base_provider import BaseLLMProvider, Message
+from api import vercel_client
+from api.vercel_client import AuthError, NetworkError, PaywallError
 from audio.ambient_listener import AmbientListener
 from screen.capture import capture_all_screens
 from ui.panel import AppState
@@ -226,17 +226,19 @@ class CompanionManager(QObject):
     sig_underline           = pyqtSignal(float, float, float)
     sig_label               = pyqtSignal(float, float, str)
     sig_recording_state     = pyqtSignal(bool, str)       # (is_recording, output_dir)
+    usage_updated           = pyqtSignal(int, int)         # (remaining_uses, total_limit)
+    paywall_triggered       = pyqtSignal()
+    auth_required           = pyqtSignal()
 
     def __init__(self):
         super().__init__()
         self._state: AppState = AppState.IDLE
-        self._history: List[Message] = []
+        self._history: List[dict[str, str]] = []
         self._current_model: Optional[str] = None
         self._web_search_enabled = True
         self._loop: Optional[asyncio.AbstractEventLoop] = None
 
         # Providers (lazy)
-        self._llm: Optional[BaseLLMProvider] = None
         self._stt = None
         self._tts = None
 
@@ -244,8 +246,8 @@ class CompanionManager(QObject):
         self._current_task: Optional[asyncio.Future] = None
         self._cancel_flag = False
 
-        # Per-app memory: { window_title: [Message, ...] }
-        self._app_memory: dict[str, List[Message]] = {}
+        # Per-app memory: { window_title: [{role, content}, ...] }
+        self._app_memory: dict[str, List[dict[str, str]]] = {}
         # Current lesson: sequence of pending steps for multi-step tutorials
         self._lesson_steps: list[str] = []
         self._lesson_step_idx: int = 0
@@ -290,25 +292,6 @@ class CompanionManager(QObject):
             self.sig_error.emit(f"Mic error: {e}")
         # Sleep/wake watchdog — restarts mic + loop after system resume
         self._start_sleep_watchdog()
-        # On startup, check Ollama and surface a friendly panel message if down.
-        self._submit(self._check_ollama_health())
-        # Refresh any stale model cache in the background.
-        self._submit(self._refresh_stale_models())
-
-    async def _check_ollama_health(self):
-        from ai.ollama_provider import OLLAMA_SETUP_MESSAGE
-        if not await self._get_llm().health_check():
-            self.sig_setup_message.emit(OLLAMA_SETUP_MESSAGE)
-
-    async def _refresh_stale_models(self):
-        try:
-            from ai.model_registry import refresh_all_stale
-            results = await refresh_all_stale()
-            for prov, count in results.items():
-                if count > 0:
-                    self.sig_models_refreshed.emit(prov, count)
-        except Exception:
-            pass   # silent — not user-facing on startup
 
     def shutdown(self):
         # Kill any audio that was playing when the user clicked Quit
@@ -375,12 +358,6 @@ class CompanionManager(QObject):
 
     # ── Provider lazy init ────────────────────────────────────────────────────
 
-    def _get_llm(self) -> BaseLLMProvider:
-        if self._llm is None:
-            from ai.ollama_provider import OllamaProvider
-            self._llm = OllamaProvider()
-        return self._llm
-
     def _get_stt(self):
         if self._stt is None:
             from audio.stt.faster_whisper_stt import FasterWhisperSTT
@@ -389,8 +366,8 @@ class CompanionManager(QObject):
 
     def _get_tts(self):
         if self._tts is None:
-            from audio.tts.edge_tts_provider import EdgeTTSProvider
-            self._tts = EdgeTTSProvider()
+            from audio.tts.vercel_tts_provider import VercelTTSProvider
+            self._tts = VercelTTSProvider()
         return self._tts
 
     # ── Input sources ─────────────────────────────────────────────────────────
@@ -500,11 +477,6 @@ class CompanionManager(QObject):
             except Exception as e:
                 self.sig_error.emit(f"Skill error: {e}")
 
-            from ai.ollama_provider import OLLAMA_SETUP_MESSAGE
-            if not await self._get_llm().health_check():
-                self.sig_setup_message.emit(OLLAMA_SETUP_MESSAGE)
-                return
-
             # 2. Screen capture — skipped if sensitive window (password manager etc.)
             #
             # ALSO skipped for "who is X" / "tell me about X" identity questions:
@@ -524,12 +496,7 @@ class CompanionManager(QObject):
 
             # 3. Parallel side-work: web search + element locator
             #
-            # Pointing now works for EVERY provider:
-            #   • If ANTHROPIC_API_KEY is set → use Claude Computer Use
-            #     (~5px accuracy, gold standard).
-            #   • Otherwise → universal grid-based locator with the active
-            #     vision LLM (Copilot GPT-4o, OpenAI, Gemini, Ollama llava).
-            #     ~25-50px accuracy. Good enough for buttons/menus/icons.
+            # Pointing uses local UIA/OCR before the Vercel AI response comes back.
             locate_triggered = is_locate(transcript)
             multistep = is_multistep(transcript)
 
@@ -541,46 +508,22 @@ class CompanionManager(QObject):
 
             if screenshots and locate_triggered:
                 shot = screenshots[0]
-                # Pointing accuracy upgrade: try the hybrid pointer first.
-                # Tier 1 (UIA tree) is ~5ms and pixel-perfect; tier 2 (OCR)
-                # handles canvas apps. Falls through to the vision LLM grid
-                # below only when both whiff.
+                # Pointing accuracy upgrade: tier 1 (UIA tree) is ~5ms and
+                # pixel-perfect; tier 2 (OCR) handles canvas apps.
                 try:
                     from ai.hybrid_pointer import find_target as _hybrid_find
                     target = _hybrid_find(
                         transcript,
                         screenshot=shot,
-                        llm_provider=self._get_llm(),
+                        llm_provider=None,
                     )
                 except Exception:
                     target = None
 
                 if target is not None and target.source in ("uia", "ocr"):
                     async def _ready(t=target):
-                        return (t.x, t.y)
+                        return t
                     locate_task = asyncio.create_task(_ready())
-                else:
-                    # Universal grid locator (Ollama vision)
-                    try:
-                        from ai.universal_locator import detect_element_universal
-                        llm = self._get_llm()
-                        locate_task = asyncio.create_task(detect_element_universal(
-                            llm=llm,
-                            screenshot_jpeg_b64=shot.base64_jpeg,
-                            original_width=shot.width,
-                            original_height=shot.height,
-                            physical_width=shot.physical_width,
-                            physical_height=shot.physical_height,
-                            physical_left=shot.physical_left,
-                            physical_top=shot.physical_top,
-                            dpi_scale=shot.dpi_scale,
-                            screen_index=shot.index,
-                            user_question=transcript,
-                            model=self._current_model,
-                        ))
-                    except Exception:
-                        # Universal locator should never crash the main flow
-                        locate_task = None
 
             search_results = ""
             if search_task:
@@ -655,16 +598,15 @@ class CompanionManager(QObject):
             # Use per-app history so context doesn't bleed between apps
             history = self._app_memory.setdefault(ak, [])
 
-            # 5. Stream LLM — buffer partial [POINT:...] tags so they never leak
+            # 5. Stream Vercel response — buffer partial [POINT:...] tags so they never leak
             full_response = ""
             display_buf = ""
             self._cancel_flag = False
-            async for chunk in self._get_llm().stream_response(
-                user_text=transcript,
-                screenshots_b64=images_b64,
-                history=history,
-                system_prompt=system,
-                model=self._current_model,
+            screenshot_payload = images_b64[0] if images_b64 else ""
+            async for chunk in vercel_client.send_chat_request(
+                transcript=transcript,
+                screenshot_base64=screenshot_payload,
+                session_id=ak,
             ):
                 if self._cancel_flag:
                     break
@@ -683,10 +625,14 @@ class CompanionManager(QObject):
                     self.sig_response_chunk.emit(flush)
             if display_buf:
                 self.sig_response_chunk.emit(ANY_TAG_RE.sub("", display_buf))
+            usage = vercel_client.get_last_usage()
+            if usage is not None:
+                remaining_uses, total_limit = usage
+                self.usage_updated.emit(remaining_uses, total_limit)
 
             # 6. Update per-app history
-            history.append(Message(role="user", content=transcript))
-            history.append(Message(role="assistant", content=full_response))
+            history.append({"role": "user", "content": transcript})
+            history.append({"role": "assistant", "content": full_response})
             self._app_memory[ak] = history[-20:]
 
             # Multistep: parse numbered steps for later "next" invocations
@@ -707,7 +653,7 @@ class CompanionManager(QObject):
                     journal.log_qa(
                         question=transcript, answer=clean,
                         app_key=ak, window_title=title,
-                        provider=cfg.llm_provider(),
+                        provider="vercel",
                         model=self._current_model or "",
                     )
                 except Exception:
@@ -744,12 +690,14 @@ class CompanionManager(QObject):
             except asyncio.CancelledError:
                 pass
 
+        except PaywallError:
+            self.paywall_triggered.emit()
+        except AuthError:
+            self.auth_required.emit()
+        except NetworkError as e:
+            self.sig_error.emit(str(e))
         except Exception as e:
-            from ai.ollama_provider import OLLAMA_SETUP_MESSAGE
-            if str(e).strip() == OLLAMA_SETUP_MESSAGE.strip():
-                self.sig_setup_message.emit(OLLAMA_SETUP_MESSAGE)
-            else:
-                self.sig_error.emit(str(e))
+            self.sig_error.emit(str(e))
 
         finally:
             if pointing_held:
@@ -836,30 +784,8 @@ class CompanionManager(QObject):
         self._current_model = model
 
     def set_active_provider(self, name: str):
-        """Runtime switch between claude / openai / copilot / gemini / ollama."""
-        cfg.set_active_llm(name)
-        self._llm = None           # force re-init on next query
+        """Provider switching is disabled; the Vercel backend owns AI routing."""
         self._current_model = None
-        # If switching to Copilot and the cached model list is stale (or
-        # missing), refresh it in the background so the panel shows the
-        # *current* set of models GitHub offers — not stale hardcoded ones.
-        if name == "copilot":
-            try:
-                from ai.github_copilot_provider import cache_is_stale
-                if cache_is_stale():
-                    self._submit(self._refresh_copilot_models())
-            except Exception:
-                pass
-        elif name in ("claude", "openai", "gemini"):
-            try:
-                from ai.model_registry import cache_is_stale as _stale
-                if _stale(name):
-                    self._submit(self._refresh_one_model_list(name))
-            except Exception:
-                pass
-        elif name == "ollama":
-            # Surface installed models in the tray immediately
-            self.refresh_ollama_models()
 
     async def _refresh_one_model_list(self, provider: str):
         try:
@@ -881,46 +807,22 @@ class CompanionManager(QObject):
         except Exception as e:
             self.sig_error.emit(f"Copilot model refresh failed: {e}")
 
-    # ── Ollama model management ──────────────────────────────────────────────
+    # ── Legacy Ollama callbacks kept as no-ops until the tray is simplified ──
 
     def refresh_ollama_models(self):
-        """Public — kick off async poll of /api/tags. Result via sig_ollama_models."""
-        self._submit(self._refresh_ollama_models())
+        self.sig_ollama_models.emit({"vision": [], "text": []})
 
     async def _refresh_ollama_models(self):
-        try:
-            from ai.ollama_provider import OllamaProvider
-            classified = await OllamaProvider().list_models_classified()
-            self.sig_ollama_models.emit(classified)
-        except Exception as e:
-            self.sig_error.emit(f"Ollama model list failed: {e}")
+        self.sig_ollama_models.emit({"vision": [], "text": []})
 
     def set_ollama_model(self, kind: str, name: str):
-        """Tray callback — update the active vision/text model. No restart needed."""
-        cfg.set_ollama_model(kind, name)
-        # Force the provider instance to re-read cfg on next call
-        if cfg.llm_provider() == "ollama":
-            self._llm = None
+        self._current_model = None
 
     def pull_ollama_model(self, name: str):
-        """Trigger `ollama pull <name>` in the background. Status via sig_ollama_pull_status."""
-        self._submit(self._pull_ollama_model(name))
+        self.sig_ollama_pull_status.emit(name, "Ollama is not used in this build.")
 
     async def _pull_ollama_model(self, name: str):
-        from ai.ollama_models_registry import pull_model
-        self.sig_ollama_pull_status.emit(name, f"Pulling {name}…")
-
-        def _progress(msg: str):
-            if msg:
-                self.sig_ollama_pull_status.emit(name, msg)
-
-        ok = await pull_model(name, cfg.ollama_host, on_progress=_progress)
-        if ok:
-            self.sig_ollama_pull_status.emit(name, f"✓ {name} ready")
-            # Refresh the installed list so the tray menu picks it up
-            await self._refresh_ollama_models()
-        else:
-            self.sig_ollama_pull_status.emit(name, f"✗ Pull failed for {name}")
+        self.sig_ollama_pull_status.emit(name, "Ollama is not used in this build.")
 
     def set_web_search(self, enabled: bool):
         self._web_search_enabled = enabled
@@ -956,23 +858,34 @@ class CompanionManager(QObject):
             history = self._app_memory.setdefault(ak, [])
 
             full = ""
-            async for chunk in self._get_llm().stream_response(
-                user_text="(quiz mode just enabled — start the quiz now)",
-                screenshots_b64=images_b64,
-                history=history,
-                system_prompt=system,
-                model=self._current_model,
+            screenshot_payload = images_b64[0] if images_b64 else ""
+            async for chunk in vercel_client.send_chat_request(
+                transcript="(quiz mode just enabled — start the quiz now)",
+                screenshot_base64=screenshot_payload,
+                session_id=ak,
             ):
                 if self._cancel_flag:
                     break
                 full += chunk
                 self.sig_response_chunk.emit(chunk)
+            history.append({
+                "role": "user",
+                "content": "(quiz mode just enabled — start the quiz now)",
+            })
+            history.append({"role": "assistant", "content": full})
+            self._app_memory[ak] = history[-20:]
             self.sig_response_done.emit(full)
             self._emit_state(AppState.SPEAKING)
             try:
                 await self._get_tts().speak(full)
             except Exception:
                 pass
+        except PaywallError:
+            self.paywall_triggered.emit()
+        except AuthError:
+            self.auth_required.emit()
+        except NetworkError as e:
+            self.sig_error.emit(str(e))
         except Exception as e:
             self.sig_error.emit(f"Quiz start failed: {e}")
         finally:

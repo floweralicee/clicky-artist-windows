@@ -2,8 +2,6 @@ from PyQt6.QtWidgets import QSystemTrayIcon, QMenu
 from PyQt6.QtGui import QIcon, QPixmap, QPainter, QColor, QBrush
 from PyQt6.QtCore import Qt, QSize, pyqtSignal, QObject
 
-from config import cfg
-
 
 def _make_tray_icon(color: QColor) -> QIcon:
     """Generate a simple coloured circle as the tray icon.
@@ -46,6 +44,7 @@ class TrayManager(QObject):
     on_attach_doc         = pyqtSignal()
     on_run_setup          = pyqtSignal()
     on_diagnostics        = pyqtSignal()
+    on_sign_out           = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -72,6 +71,7 @@ class TrayManager(QObject):
         self._journal_enabled = True
         self._ocr_enabled = True
         self._is_recording = False
+        self._account_email = ""
 
         self._ollama_installed: dict[str, list[str]] = {"vision": [], "text": []}
 
@@ -88,38 +88,11 @@ class TrayManager(QObject):
             "QMenu::separator { height: 1px; background: rgb(55,55,70); margin: 4px 8px; }"
         )
 
-        providers = cfg.describe()
-
         show_action = menu.addAction("Show Panel")
         show_action.triggered.connect(self.on_show_panel)
 
         hide_action = menu.addAction("Hide Panel")
         hide_action.triggered.connect(self.on_hide_panel)
-
-        stop_action = menu.addAction("Stop (Esc)")
-        stop_action.triggered.connect(self.on_stop)
-
-        menu.addSeparator()
-
-        self._build_ollama_submenu(menu, providers)
-
-        menu.addSeparator()
-
-        search_action = menu.addAction(
-            "Web Search: ON" if self._search_enabled else "Web Search: OFF"
-        )
-        search_action.setCheckable(True)
-        search_action.setChecked(self._search_enabled)
-        search_action.triggered.connect(self._toggle_search)
-        self._search_action = search_action
-
-        wake_action = menu.addAction(
-            "Wake word 'Clicky': ON" if self._wake_enabled else "Wake word 'Clicky': OFF"
-        )
-        wake_action.setCheckable(True)
-        wake_action.setChecked(self._wake_enabled)
-        wake_action.triggered.connect(self._toggle_wake)
-        self._wake_action = wake_action
 
         menu.addSeparator()
         tutor_menu = menu.addMenu("Tutor Mode")
@@ -141,77 +114,13 @@ class TrayManager(QObject):
         quiz_action.triggered.connect(self._toggle_quiz)
         self._quiz_action = quiz_action
 
-        privacy_action = tutor_menu.addAction(
-            "Privacy Guard: ON" if self._privacy_enabled
-            else "Privacy Guard: OFF"
-        )
-        privacy_action.setCheckable(True)
-        privacy_action.setChecked(self._privacy_enabled)
-        privacy_action.triggered.connect(self._toggle_privacy)
-        self._privacy_action = privacy_action
-
-        code_action = tutor_menu.addAction(
-            "Code Mode (auto): ON" if self._code_enabled else "Code Mode (auto): OFF"
-        )
-        code_action.setCheckable(True)
-        code_action.setChecked(self._code_enabled)
-        code_action.triggered.connect(self._toggle_code)
-        self._code_action = code_action
-
-        ml_action = tutor_menu.addAction(
-            "Multilingual: ON" if self._multilang_enabled else "Multilingual: OFF"
-        )
-        ml_action.setCheckable(True)
-        ml_action.setChecked(self._multilang_enabled)
-        ml_action.triggered.connect(self._toggle_multilang)
-        self._ml_action = ml_action
-
-        ocr_action = tutor_menu.addAction(
-            "OCR Fallback: ON" if self._ocr_enabled else "OCR Fallback: OFF"
-        )
-        ocr_action.setCheckable(True)
-        ocr_action.setChecked(self._ocr_enabled)
-        ocr_action.triggered.connect(self._toggle_ocr)
-        self._ocr_action = ocr_action
-
         menu.addSeparator()
-        journal_menu = menu.addMenu("Journal")
-
-        journal_action = journal_menu.addAction(
-            "Logging: ON" if self._journal_enabled else "Logging: OFF"
-        )
-        journal_action.setCheckable(True)
-        journal_action.setChecked(self._journal_enabled)
-        journal_action.triggered.connect(self._toggle_journal)
-        self._journal_action = journal_action
-
-        open_journal = journal_menu.addAction("Open journal folder")
-        open_journal.triggered.connect(self.on_journal_open)
-
-        attach = journal_menu.addAction("Attach document (PDF / TXT / DOCX)…")
-        attach.triggered.connect(self.on_attach_doc)
-
-        rec_menu = menu.addMenu("Lesson Recording")
-        if self._is_recording:
-            stop_rec = rec_menu.addAction("● Stop recording")
-            stop_rec.triggered.connect(self.on_record_stop)
-        else:
-            start_rec = rec_menu.addAction("Start recording")
-            start_rec.triggered.connect(self.on_record_start)
-
-        wf_menu = menu.addMenu("Workflow Capture")
-        wf_start = wf_menu.addAction("Start capturing my clicks")
-        wf_start.triggered.connect(self.on_workflow_start)
-        wf_stop  = wf_menu.addAction("Stop + send to Clicky")
-        wf_stop.triggered.connect(self.on_workflow_stop)
-
-        menu.addSeparator()
-
-        setup_menu = menu.addMenu("Setup && Diagnostics")
-        run_setup = setup_menu.addAction("Run setup wizard again…")
-        run_setup.triggered.connect(self.on_run_setup)
-        diag = setup_menu.addAction("Save diagnostics report…")
-        diag.triggered.connect(self.on_diagnostics)
+        account_menu = menu.addMenu("Account")
+        email_label = self._account_email or "signed in"
+        email_action = account_menu.addAction(email_label)
+        email_action.setEnabled(False)
+        sign_out_action = account_menu.addAction("Sign Out")
+        sign_out_action.triggered.connect(self.on_sign_out)
 
         menu.addSeparator()
 
@@ -363,6 +272,10 @@ class TrayManager(QObject):
 
     def set_recording_state(self, on: bool):
         self._is_recording = on
+        self.rebuild_menu()
+
+    def set_account_email(self, email: str):
+        self._account_email = email
         self.rebuild_menu()
 
     def set_state_icon(self, state: str):

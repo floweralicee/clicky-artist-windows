@@ -15,7 +15,6 @@ from ui.design import (
     FONT_TITLE, FONT_STATUS, FONT_RESPONSE, FONT_LABEL,
     SURFACE, TEXT_SECONDARY, BORDER, ANIM_FAST_MS
 )
-from config import cfg
 
 
 class AppState(Enum):
@@ -87,7 +86,7 @@ class WaveformWidget(QWidget):
 
 
 PROVIDER_LABELS = {
-    "ollama": f"Ollama ({cfg.get_ollama_model('vision')})",
+    "vercel": "Kimi K2.5",
 }
 
 # Provider model lists are fetched live from each vendor's /models endpoint
@@ -189,7 +188,7 @@ class CompanionPanel(QWidget):
         about.setStyleSheet("color: rgb(100,100,120); font-size: 10px;")
         header.addWidget(about)
         header.addStretch()
-        provider = cfg.llm_provider()
+        provider = "vercel"
         self._badge = ProviderBadge(provider)
         header.addWidget(self._badge)
 
@@ -223,6 +222,13 @@ class CompanionPanel(QWidget):
         status_row.addWidget(self._status_label)
         status_row.addStretch()
         root.addLayout(status_row)
+
+        self._usage_label = QLabel("")
+        self._usage_label.setStyleSheet(
+            "color: rgb(140,140,160); font-size: 11px;"
+        )
+        self._usage_label.hide()
+        root.addWidget(self._usage_label)
 
         # Waveform
         self._waveform = WaveformWidget()
@@ -272,13 +278,15 @@ class CompanionPanel(QWidget):
         root.addLayout(footer)
 
     def _populate_models(self):
-        self._set_models_for(cfg.llm_provider())
+        self._set_models_for("vercel")
 
     def _set_models_for(self, provider: str):
         # Avoid firing on_model_changed while we rebuild
         self._model_combo.blockSignals(True)
         self._model_combo.clear()
-        if provider == "copilot":
+        if provider == "vercel":
+            self._model_combo.addItem("Kimi K2.5 via Vercel", userData="kimi-k2.5")
+        elif provider == "copilot":
             for mid, label in _copilot_model_choices():
                 self._model_combo.addItem(label, userData=mid)
         elif provider in ("claude", "openai", "gemini"):
@@ -291,9 +299,8 @@ class CompanionPanel(QWidget):
                     self._model_combo.addItem(label, userData=m["id"])
             except Exception:
                 self._model_combo.addItem("default", userData="default")
-        else:   # ollama
-            vision_model = cfg.get_ollama_model("vision")
-            self._model_combo.addItem(vision_model, userData=vision_model)
+        else:
+            self._model_combo.addItem("default", userData="default")
         self._model_combo.blockSignals(False)
         # Fire once with the new default model id (NOT the display label) so
         # the manager picks it up — important when label != id.
@@ -338,6 +345,18 @@ class CompanionPanel(QWidget):
 
     def set_audio_level(self, rms: float):
         self._waveform.set_level(rms)
+
+    def set_usage(self, remaining_uses: int, total_limit: int):
+        if total_limit <= 0:
+            self._usage_label.setText("✓ subscribed")
+            self._usage_label.show()
+            return
+
+        remaining_uses = max(0, remaining_uses)
+        self._usage_label.setText(
+            f"{remaining_uses} of {total_limit} free sessions left"
+        )
+        self._usage_label.show()
 
     def clear_response(self):
         self._response_text = ""

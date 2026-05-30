@@ -3,8 +3,6 @@ from typing import Callable
 
 import keyboard
 
-from config import cfg
-
 
 class GlobalHotkeyMonitor:
     """
@@ -19,7 +17,7 @@ class GlobalHotkeyMonitor:
         on_release: Callable[[], None],
         hotkey: str | None = None,
     ):
-        self._hotkey = hotkey or cfg.hotkey
+        self._hotkey = hotkey or "ctrl+alt+space"
         self._on_press = on_press
         self._on_release = on_release
         self._held = False

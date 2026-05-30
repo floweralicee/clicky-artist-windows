@@ -2,8 +2,8 @@
 
 ## What this is
 A custom fork of Bitshank-2338/clicky-windows built for animation artists.
-Runs 100% offline using Ollama. No API keys, no accounts, no internet required
-after the one-time model download.
+Runs as a thin Windows tray app: local voice capture and screen capture,
+with AI, auth, usage limits, payment, and TTS handled by the Vercel backend.
 
 Landing page: floweralice.me/clicky
 Download link: floweralice.me/download/clicky.zip
@@ -12,48 +12,49 @@ Download link: floweralice.me/download/clicky.zip
 - Animation students and professionals
 - Software: Maya, After Effects, Blender, Toon Boom Harmony,
   Premiere Pro, DaVinci Resolve, Nuke
-- Many users are in China — must work without Google or any cloud service
+- US-based animation artists — no Google login, email + password only
 - Non-technical users — they follow a video, not written instructions
 - They should never see API keys, config files, or terminals
 
 ## Tech stack
-- Python + PyQt6 (from upstream Bitshank fork)
-- Ollama — local AI, completely free, no account
-- Faster-Whisper — local speech-to-text, free
-- Edge TTS — free text-to-speech, 400+ voices, excellent Chinese support
+| Layer | Choice |
+|-------|--------|
+| App | Python + PyQt6 (from upstream Bitshank fork) |
+| AI | Vercel AI Gateway + Kimi K2.5 |
+| STT | Faster-Whisper — local speech-to-text, free |
+| TTS | ElevenLabs through the Vercel backend |
+| Auth + usage | Supabase |
+| Payments | Stripe Checkout + Stripe webhooks |
+| Auto-update | PyUpdater |
 
 ---
 
 ## Changes from upstream
 
-### CHANGE 1 — Lock AI provider to Ollama only
+### CHANGE 1 — Route AI through Vercel AI Gateway + Kimi K2.5
 File: config.py
 
-Remove the priority chain: Claude → OpenAI → Copilot → Gemini → Ollama
-Replace with Ollama hardcoded as the only option.
+Remove the priority chain: Claude → OpenAI → Copilot → Gemini → Ollama.
+Replace with VERCEL_API_URL as the only app-side AI endpoint.
 
 Values to hardcode:
-  CLICKY_ACTIVE_LLM = "ollama"
-  OLLAMA_HOST = "http://localhost:11434"
-  OLLAMA_VISION_MODEL = "qwen2-vl:7b"
-  OLLAMA_TEXT_MODEL = "qwen2.5-coder:7b"
+  VERCEL_API_URL = "https://your-project.vercel.app"
+  APP_VERSION = "1.0.0"
+  WHISPER_MODEL = "base"
 
-If Ollama is not running, show this message in the UI panel:
-  "clicky needs ollama to run.
-   visit floweralice.me/clicky for setup instructions."
-Do not crash. Do not show a Python error. Show this message gently.
+The app never stores Kimi or Vercel AI Gateway keys. If the backend is
+unreachable, show the error gently in the UI panel.
 
 ---
 
-### CHANGE 2 — Lock TTS to Edge TTS only
+### CHANGE 2 — Route TTS through ElevenLabs on Vercel
 File: config.py and audio/tts/ provider chain
 
-Remove ElevenLabs and OpenAI TTS from the provider list.
-Use Edge TTS as the only TTS provider.
-Edge TTS is free, requires no key, and has Chinese voices built in.
+Remove direct ElevenLabs and OpenAI TTS calls from the app.
+Use the Vercel /api/tts route as the only TTS provider.
+The ElevenLabs API key and voice ID live in Vercel env vars only.
 
-Default voice: en-US-AvaNeural
-Chinese voice (auto-switched when Chinese detected): zh-CN-XiaoxiaoNeural
+Default voice: configured by ELEVENLABS_VOICE_ID in Vercel.
 
 ---
 
@@ -96,11 +97,67 @@ Remove from tray menu:
 Keep in tray menu:
 - Show / Hide Panel
 - Tutor Mode submenu (Slow Mode and Quiz Mode are useful for animators)
+- Account submenu with email display and Sign Out
 - Quit
 
 ---
 
-### CHANGE 6 — Update branding
+### CHANGE 6 — Add Supabase email + password auth
+Files: auth/supabase_auth.py, ui/auth_screen.py, main.py
+
+First launch shows a welcome screen, then sign up or sign in.
+JWTs are stored in Windows Credential Manager and sent as Bearer tokens
+to every protected Vercel backend route.
+
+No Google login. No OAuth. No API keys exposed to users.
+
+---
+
+### CHANGE 7 — Add usage limit and paywall
+Files: api/vercel_client.py, ui/paywall_screen.py, ui/panel.py, backend/api/*
+
+Users get 10 free sessions. Usage is counted on the Vercel backend
+in Supabase, not trusted from the app.
+
+When the backend returns { error: "paywall" }, show the paywall screen:
+  "$10 / month"
+  "unlimited sessions"
+  "subscribe — $10/month"
+
+Stripe Checkout opens in the browser. Stripe webhooks update Supabase.
+The app polls /api/status until the subscription becomes active.
+
+---
+
+### CHANGE 8 — Add Vercel backend
+Files: backend/api/* and backend/lib/*
+
+Add these routes:
+  POST /api/chat
+  POST /api/tts
+  POST /api/auth/signup
+  POST /api/auth/signin
+  GET /api/status
+  POST /api/checkout
+  POST /api/webhooks/stripe
+  GET /api/version
+
+The backend verifies Supabase JWTs, enforces usage limits, calls Kimi
+K2.5 through Vercel AI Gateway, proxies ElevenLabs TTS, handles Stripe
+webhooks, and exposes the latest app version.
+
+---
+
+### CHANGE 9 — Add auto-update
+Files: update/updater.py, main.py
+
+On startup, check /api/version in the background.
+If a newer version exists, download it silently and show a tray
+notification when the update is ready.
+
+---
+
+### CHANGE 10 — Update branding
 Files: ui/tray.py, ui/panel.py, main.py
 
 - App window title: "Clicky for Animators"
@@ -110,18 +167,14 @@ Files: ui/tray.py, ui/panel.py, main.py
 
 ---
 
-### CHANGE 7 — Pre-filled .env file
+### CHANGE 11 — Pre-filled .env file
 File: .env (create at project root)
 
 Create this file and include it in the final zip alongside Clicky.exe.
 Animators never need to create or edit this.
 
 Contents:
-  CLICKY_ACTIVE_LLM=ollama
-  OLLAMA_HOST=http://localhost:11434
-  OLLAMA_VISION_MODEL=qwen2-vl:7b
-  OLLAMA_TEXT_MODEL=qwen2.5-coder:7b
-  CLICKY_STT=faster_whisper
+  VERCEL_API_URL=https://your-project.vercel.app
   WHISPER_MODEL=base
 
 ---
@@ -135,6 +188,12 @@ Run these commands on a Windows machine:
   pyinstaller clicky.spec --clean --noconfirm
 
 Output will be in: dist/Clicky/
+
+Deploy the backend before sharing the zip:
+
+  cd backend
+  npm install
+  vercel deploy --prod
 
 ---
 
@@ -155,13 +214,12 @@ That is all the animator needs to read.
 
 ## What the setup video should cover
 
-Keep it under 10 minutes. Show each step on screen.
+Keep it under 5 minutes. Show each step on screen.
 
-Part 1 — Install Ollama (3 min)
-  - Go to ollama.com, click Download
-  - Run the installer
-  - Open cmd, paste: ollama pull qwen2-vl:7b
-  - Show it downloading, tell them to wait
+Part 1 — Create an account (1 min)
+  - Open Clicky
+  - Sign up with email + password
+  - No Google login, no API keys
 
 Part 2 — Install Clicky (1 min)
   - Go to floweralice.me/clicky
@@ -181,8 +239,9 @@ Part 3 — Use it (3 min)
 Host the zip at: floweralice.me/download/clicky.zip
 Link from the landing page download button.
 
-For China users: make sure the zip is hosted on your own server
-or Cloudflare Pages — not Google Drive (blocked in China).
+Deploy the Vercel backend first, then put its URL in the shipped .env.
+Make sure the zip is hosted on your own server or Cloudflare Pages,
+not Google Drive.
 
 ---
 
@@ -190,13 +249,11 @@ or Cloudflare Pages — not Google Drive (blocked in China).
 
 | Version | Date | What changed |
 |---------|------|-------------|
-| v1.0 | TBD | Initial animator edition |
+| v1.0 | TBD | Windows tray companion for animators with local Faster-Whisper STT, Kimi K2.5 via Vercel AI Gateway, ElevenLabs TTS through Vercel, Supabase auth and usage tracking, Stripe paywall, and PyUpdater auto-update |
 
 ---
 
 ## Known limitations
-- Ollama requires a one-time 5GB model download
-- Needs 16GB RAM for best performance (8GB works but slower)
+- Requires internet access for auth, AI, TTS, payment, and update checks
 - Intel Macs not supported (this is Windows only)
-- First response after launching is slower while model loads into memory
-- Does not auto-update — share a new zip when there is a new version
+- First response can be slower if the backend or AI gateway is cold

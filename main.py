@@ -3,16 +3,16 @@ Clicky for Windows — Entry Point.
 Boots Qt, spawns overlay+panel+tray, starts ambient mic listener, binds hotkey.
 """
 
-import os
 import sys
-from pathlib import Path
 
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import Qt
 
-from config import cfg
+from auth import supabase_auth
 from ui.tray import TrayManager
 from ui.panel import CompanionPanel, AppState
+from ui.auth_screen import AuthScreen
+from ui.paywall_screen import PaywallScreen
 from ui.overlay import (
     CursorOverlay, MODE_IDLE, MODE_LISTENING, MODE_THINKING, MODE_SPEAKING
 )
@@ -42,6 +42,7 @@ def main():
     panel   = CompanionPanel()
     overlay = CursorOverlay()
     tray    = TrayManager()
+    companion_started = False
 
     # ── Wire signals ──────────────────────────────────────────────────────────
 
@@ -55,6 +56,7 @@ def main():
 
     # Response streaming
     manager.sig_response_chunk.connect(panel.append_response_chunk)
+    manager.usage_updated.connect(panel.set_usage)
 
     # Audio level → cursor waveform (+ panel meter)
     manager.sig_audio_level.connect(panel.set_audio_level)
@@ -83,6 +85,37 @@ def main():
 
     manager.sig_setup_message.connect(_on_setup_message)
 
+    def _show_auth_screen():
+        auth_screen = AuthScreen()
+
+        def _on_auth_complete():
+            _start_companion()
+
+        auth_screen.auth_complete.connect(_on_auth_complete)
+        auth_screen.show()
+        auth_screen.raise_()
+        _auth_keepalive[0] = auth_screen
+
+    def _show_paywall_screen():
+        paywall = PaywallScreen()
+
+        def _on_subscription_activated():
+            panel.show()
+            tray.show_notification("Clicky", "Subscription active.")
+
+        def _on_sign_in_requested():
+            paywall.close()
+            _show_auth_screen()
+
+        paywall.subscription_activated.connect(_on_subscription_activated)
+        paywall.sign_in_requested.connect(_on_sign_in_requested)
+        paywall.show()
+        paywall.raise_()
+        _paywall_keepalive[0] = paywall
+
+    manager.paywall_triggered.connect(_show_paywall_screen)
+    manager.auth_required.connect(_show_auth_screen)
+
     # Panel → Manager
     panel.on_model_changed.connect(manager.set_model)
 
@@ -108,6 +141,9 @@ def main():
     tray.on_toggle_multilang.connect(manager.set_multilang)
     tray.on_toggle_journal.connect(manager.set_journal)
     tray.on_toggle_ocr.connect(manager.set_ocr_enabled)
+    tray.on_sign_out.connect(
+        lambda: (supabase_auth.clear_jwt(), panel.hide(), _show_auth_screen())
+    )
 
     # Lesson recording
     def _record_start():
@@ -176,76 +212,6 @@ def main():
 
     tray.on_stop.connect(manager.stop)
 
-    # Ollama multi-model wiring
-    tray.on_ollama_set_model.connect(manager.set_ollama_model)
-    tray.on_ollama_pull.connect(manager.pull_ollama_model)
-    tray.on_ollama_refresh.connect(manager.refresh_ollama_models)
-
-    # When the installed-model list arrives, push it into the tray submenu
-    manager.sig_ollama_models.connect(tray.set_ollama_models)
-
-    # Surface pull progress as tray toasts so students see download status
-    def _on_ollama_pull_status(name: str, status: str):
-        tray.show_notification("Ollama", status)
-    manager.sig_ollama_pull_status.connect(_on_ollama_pull_status)
-
-    # First-run: poll Ollama so the tray menu shows installed models.
-    manager.refresh_ollama_models()
-
-    # Setup wizard (re-run) + diagnostics
-    def _run_setup_again():
-        from ui.setup_wizard import SetupWizard
-        wiz = SetupWizard()
-        wiz.show()
-        _setup_keepalive[0] = wiz
-    tray.on_run_setup.connect(_run_setup_again)
-
-    def _save_diagnostics():
-        import datetime, json, platform, traceback
-        from ai import ollama_bootstrap as ob
-        base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
-        out = Path(base) / "Clicky" / f"diagnostics-{datetime.datetime.now():%Y%m%d-%H%M%S}.txt"
-        try:
-            providers_d = cfg.describe()
-        except Exception:
-            providers_d = {}
-        report = []
-        report.append(f"Clicky diagnostics — {datetime.datetime.now().isoformat()}")
-        report.append(f"Python: {sys.version.split()[0]}")
-        report.append(f"Platform: {platform.platform()}")
-        report.append(f"Active LLM: {providers_d.get('llm', '?')}")
-        report.append(f"STT: {providers_d.get('stt', '?')}  TTS: {providers_d.get('tts', '?')}")
-        report.append("")
-        report.append("─── Ollama ───")
-        try:
-            report.append(f"Host: {cfg.ollama_host}")
-            report.append(f"Text model:   {cfg.ollama_text_model}")
-            report.append(f"Vision model: {cfg.ollama_vision_model}")
-            report.append(f"Binary on PATH: {ob.is_ollama_installed()}")
-            report.append(f"Server reachable: {ob.is_ollama_running()}")
-            if ob.is_ollama_running():
-                report.append(f"Installed models: {ob.list_installed_models()}")
-        except Exception:
-            report.append(traceback.format_exc())
-        report.append("")
-        report.append("─── GitHub Copilot ───")
-        try:
-            from ai.github_copilot_provider import is_authenticated, _token_path
-            report.append(f"Token file: {_token_path()}  exists={_token_path().exists()}")
-            report.append(f"Authenticated: {is_authenticated()}")
-        except Exception:
-            report.append(traceback.format_exc())
-        try:
-            out.write_text("\n".join(report), encoding="utf-8")
-            tray.show_notification("Diagnostics saved", str(out))
-            try:
-                os.startfile(str(out))
-            except Exception:
-                pass
-        except Exception as e:
-            tray.show_notification("Diagnostics failed", str(e))
-    tray.on_diagnostics.connect(_save_diagnostics)
-
     tray.on_quit.connect(lambda: (manager.shutdown(), app.quit()))
 
     # ── Global hotkey ─────────────────────────────────────────────────────────
@@ -259,41 +225,41 @@ def main():
     stop_key = StopHotkey(on_stop=manager.stop, key="esc")
     stop_key.start()
 
-    # ── Show UI + start listener ──────────────────────────────────────────────
-    overlay.show()        # persistent overlay (cursor follow)
-    # Panel is hidden by default — user can open it from the tray menu if needed
-    manager.start()        # begin ambient mic + wake-word scanning
+    def _start_companion():
+        nonlocal companion_started
+        if companion_started:
+            return
+        companion_started = True
+        overlay.show()
+        manager.start()
+        tray.show_notification(
+            "Clicky for Animators",
+            "Hold Ctrl+Alt+Space to ask  |  Kimi K2.5 + Faster-Whisper",
+        )
 
-    providers = cfg.describe()
-    tray.show_notification(
-        "Clicky for Animators",
-        f"Hold {cfg.hotkey} to ask  |  Ollama + Faster-Whisper + Edge TTS",
-    )
+    def _check_for_updates():
+        try:
+            from update import updater
+            check = getattr(updater, "check_for_updates", None)
+            if check:
+                manager._submit(check(notify=tray.show_notification))
+        except Exception:
+            pass
 
-    # ── First-run setup wizard ────────────────────────────────────────────────
-    # Show the Ollama install / model pull walkthrough on the first launch.
-    # If everything is already wired up, the helper is a no-op.
-    try:
-        from ui.setup_wizard import maybe_show_setup_wizard, SetupWizard
+    _check_for_updates()
 
-        # Force-show via env var (handy for testing).
-        if os.environ.get("CLICKY_FORCE_SETUP", "").strip() in ("1", "true", "yes"):
-            wiz = SetupWizard()
-            wiz.show()
-            _setup_keepalive[0] = wiz
-        else:
-            wiz = maybe_show_setup_wizard()
-            if wiz is not None:
-                _setup_keepalive[0] = wiz   # keep a reference so it isn't GC'd
-    except Exception as e:
-        print(f"[setup-wizard] skipped: {e}")
+    # ── Auth gate ─────────────────────────────────────────────────────────────
+    if supabase_auth.load_jwt():
+        _start_companion()
+    else:
+        _show_auth_screen()
 
     sys.exit(app.exec())
 
 
-# Module-level slot used to keep a reference to the setup wizard alive while
-# Qt is running (PyQt will GC it otherwise and the dialog will vanish).
-_setup_keepalive: list = [None]
+# Module-level slots used to keep auth/paywall windows alive while Qt is running.
+_auth_keepalive: list = [None]
+_paywall_keepalive: list = [None]
 
 
 if __name__ == "__main__":

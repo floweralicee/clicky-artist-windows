@@ -4,7 +4,7 @@ from typing import Optional
 
 from audio.stt.base_stt import BaseSTT
 from audio.capture import pcm16_to_wav
-from config import cfg
+from config import WHISPER_MODEL
 
 _model_cache = None
 
@@ -14,7 +14,7 @@ def _get_model():
     if _model_cache is None:
         from faster_whisper import WhisperModel
         # compute_type="int8" runs on CPU without CUDA; use "float16" if GPU available
-        _model_cache = WhisperModel(cfg.whisper_model, device="cpu", compute_type="int8")
+        _model_cache = WhisperModel(WHISPER_MODEL, device="cpu", compute_type="int8")
     return _model_cache
 
 
