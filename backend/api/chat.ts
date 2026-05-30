@@ -1,10 +1,9 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-
-import { HttpError, verifyJWT } from '../lib/auth'
-import { getUsage, logUsage } from '../lib/usage'
+import { createClient } from '@supabase/supabase-js'
 
 const AI_GATEWAY_MODEL = 'moonshotai/kimi-k2.5'
 const AI_GATEWAY_URL = 'https://ai-gateway.vercel.sh/v1/chat/completions'
+const FREE_SESSION_LIMIT = 10
 
 const SYSTEM_PROMPT = `You are an animation mentor and teacher. You help professional
 animators and animation students with software including Maya, After Effects,
@@ -107,14 +106,60 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const { user_id } = await verifyJWT(req)
-    const usage = await getUsage(user_id)
+    const authorization = req.headers.authorization
+    if (!authorization?.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Missing auth token' })
+    }
 
-    if (!usage.is_paid && usage.count >= usage.limit) {
+    const supabaseUrl = process.env.SUPABASE_URL
+    const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+    if (!supabaseUrl || !supabaseServiceRoleKey) {
+      return res.status(500).json({ error: 'Supabase is not configured' })
+    }
+
+    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    })
+
+    const token = authorization.slice('Bearer '.length).trim()
+    const { data, error: authError } = await supabaseAdmin.auth.getUser(token)
+    if (authError || !data.user) {
+      return res.status(401).json({ error: 'Invalid auth token' })
+    }
+
+    const userId = data.user.id
+
+    const { count, error: usageError } = await supabaseAdmin
+      .from('usage_logs')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+
+    if (usageError) {
+      return res.status(500).json({ error: `Could not count usage: ${usageError.message}` })
+    }
+
+    const { data: subscription, error: subscriptionError } = await supabaseAdmin
+      .from('subscriptions')
+      .select('status')
+      .eq('user_id', userId)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (subscriptionError) {
+      return res.status(500).json({ error: `Could not read subscription: ${subscriptionError.message}` })
+    }
+
+    const usedCount = count ?? 0
+    const subscriptionStatus = subscription?.status ?? null
+    const isPaid = subscriptionStatus === 'active'
+    const remaining = Math.max(0, FREE_SESSION_LIMIT - usedCount)
+
+    if (!isPaid && usedCount >= FREE_SESSION_LIMIT) {
       return res.status(402).json({
         error: 'paywall',
-        uses: usage.count,
-        limit: usage.limit,
+        uses: usedCount,
+        limit: FREE_SESSION_LIMIT,
       })
     }
 
@@ -123,16 +168,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: 'Transcript is required' })
     }
 
-    await logUsage(user_id, screenshot_base64 ? 'vision' : 'text')
+    const requestType = screenshot_base64 ? 'vision' : 'text'
+    const { error: logError } = await supabaseAdmin
+      .from('usage_logs')
+      .insert({ user_id: userId, request_type: requestType })
 
-    const remainingUses = usage.is_paid
-      ? usage.remaining
-      : Math.max(0, usage.remaining - 1)
+    if (logError) {
+      return res.status(500).json({ error: `Could not log usage: ${logError.message}` })
+    }
+
+    const remainingUses = isPaid ? remaining : Math.max(0, remaining - 1)
 
     res.setHeader('Content-Type', 'text/plain; charset=utf-8')
     res.setHeader('Cache-Control', 'no-cache, no-transform')
     res.setHeader('X-Remaining-Uses', String(remainingUses))
-    res.setHeader('X-Total-Limit', String(usage.limit))
+    res.setHeader('X-Total-Limit', String(FREE_SESSION_LIMIT))
 
     await streamGatewayResponse(
       transcript,
@@ -141,11 +191,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     )
 
     return res.end()
-  } catch (error) {
-    if (error instanceof HttpError) {
-      return res.status(error.statusCode).json({ error: error.message })
-    }
+  } catch {
     return res.status(500).json({ error: 'Could not complete chat request' })
   }
 }
-

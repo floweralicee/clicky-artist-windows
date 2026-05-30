@@ -1,6 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-
-import { HttpError, verifyJWT } from '../lib/auth'
+import { createClient } from '@supabase/supabase-js'
 
 const ELEVENLABS_MODEL_ID = 'eleven_flash_v2_5'
 
@@ -10,7 +9,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    await verifyJWT(req)
+    const authorization = req.headers.authorization
+    if (!authorization?.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Missing auth token' })
+    }
+
+    const supabaseUrl = process.env.SUPABASE_URL
+    const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+    if (!supabaseUrl || !supabaseServiceRoleKey) {
+      return res.status(500).json({ error: 'Supabase is not configured' })
+    }
+
+    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    })
+
+    const token = authorization.slice('Bearer '.length).trim()
+    const { data, error: authError } = await supabaseAdmin.auth.getUser(token)
+    if (authError || !data.user) {
+      return res.status(401).json({ error: 'Invalid auth token' })
+    }
 
     const { text } = req.body ?? {}
     if (!text || typeof text !== 'string') {
@@ -43,17 +61,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     )
 
     if (!response.ok) {
-      return res.status(502).json({ error: 'ElevenLabs request failed' })
+      const errorBody = await response.text()
+      return res.status(502).json({ error: `ElevenLabs request failed: ${errorBody.slice(0, 200)}` })
     }
 
     const audio = Buffer.from(await response.arrayBuffer())
     res.setHeader('Content-Type', 'audio/mpeg')
     return res.status(200).send(audio)
-  } catch (error) {
-    if (error instanceof HttpError) {
-      return res.status(error.statusCode).json({ error: error.message })
-    }
+  } catch {
     return res.status(500).json({ error: 'Could not create audio' })
   }
 }
-
