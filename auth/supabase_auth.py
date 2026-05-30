@@ -9,7 +9,7 @@ from typing import Any
 import httpx
 import keyring
 
-from config import VERCEL_API_URL
+from config import SUPABASE_ANON_KEY, SUPABASE_URL, VERCEL_API_URL
 
 
 CREDENTIAL_SERVICE_NAME = "clicky-animator"
@@ -52,6 +52,76 @@ def _is_jwt_expired(token: str) -> bool:
         return True
 
 
+def _is_backend_unreachable(status_code: int, response_text: str) -> bool:
+    if status_code == 404:
+        return True
+    return status_code >= 500 and "NOT_FOUND" in response_text
+
+
+async def _direct_supabase_auth(
+    email: str,
+    password: str,
+    is_signup: bool,
+) -> AuthResult | None:
+    supabase_url = SUPABASE_URL.strip().rstrip("/")
+    anon_key = SUPABASE_ANON_KEY.strip()
+    if not supabase_url or not anon_key:
+        return None
+
+    headers = {
+        "apikey": anon_key,
+        "Authorization": f"Bearer {anon_key}",
+        "Content-Type": "application/json",
+    }
+    if is_signup:
+        request_url = f"{supabase_url}/auth/v1/signup"
+    else:
+        request_url = f"{supabase_url}/auth/v1/token?grant_type=password"
+
+    payload = {"email": email.strip(), "password": password}
+
+    try:
+        async with httpx.AsyncClient(timeout=AUTH_REQUEST_TIMEOUT_SECONDS) as client:
+            response = await client.post(request_url, headers=headers, json=payload)
+    except httpx.HTTPError:
+        return None
+
+    try:
+        response_json = response.json()
+    except ValueError:
+        response_json = {}
+
+    if response.status_code >= 400:
+        if is_signup and response.status_code == 422:
+            return await _direct_supabase_auth(email, password, is_signup=False)
+        return AuthResult(
+            success=False,
+            error=_friendly_error(response_json, "Email or password was not accepted."),
+        )
+
+    token = response_json.get("access_token")
+    if not isinstance(token, str) or not token.strip():
+        if is_signup:
+            return AuthResult(
+                success=False,
+                error="Account created. Check your email to confirm, then sign in.",
+            )
+        return AuthResult(
+            success=False,
+            error="Clicky signed in, but no session token was returned.",
+        )
+
+    try:
+        store_jwt(token)
+    except keyring.errors.KeyringError:
+        return AuthResult(
+            success=False,
+            error="Could not save your session in Windows Credential Manager.",
+        )
+
+    return AuthResult(success=True, token=token)
+
+
 async def _post_auth(path: str, email: str, password: str) -> AuthResult:
     if not email.strip():
         return AuthResult(success=False, error="Please enter your email.")
@@ -64,6 +134,13 @@ async def _post_auth(path: str, email: str, password: str) -> AuthResult:
         async with httpx.AsyncClient(timeout=AUTH_REQUEST_TIMEOUT_SECONDS) as client:
             response = await client.post(_api_url(path), json=payload)
     except httpx.ConnectError:
+        fallback = await _direct_supabase_auth(
+            email,
+            password,
+            is_signup=path.endswith("/signup"),
+        )
+        if fallback is not None:
+            return fallback
         return AuthResult(
             success=False,
             error="Could not connect to Clicky. Check your internet connection.",
@@ -85,6 +162,22 @@ async def _post_auth(path: str, email: str, password: str) -> AuthResult:
         response_json = {}
 
     if response.status_code >= 400:
+        if _is_backend_unreachable(response.status_code, response.text):
+            fallback = await _direct_supabase_auth(
+                email,
+                password,
+                is_signup=path.endswith("/signup"),
+            )
+            if fallback is not None:
+                return fallback
+            return AuthResult(
+                success=False,
+                error=(
+                    "Clicky could not reach the server. "
+                    "Make sure the Vercel backend is deployed, or add "
+                    "SUPABASE_URL and SUPABASE_ANON_KEY to .env."
+                ),
+            )
         return AuthResult(
             success=False,
             error=_friendly_error(response_json, "Email or password was not accepted."),

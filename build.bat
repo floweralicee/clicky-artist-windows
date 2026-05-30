@@ -61,6 +61,7 @@ if errorlevel 1 (
 REM ── 5. Copy .env.example and LICENSE into the dist folder ─────────
 echo [4/4] Bundling docs and env template...
 copy /y ".env.example" "dist\Clicky\.env.example" >nul
+if exist ".env" copy /y ".env" "dist\Clicky\.env" >nul
 copy /y "LICENSE"       "dist\Clicky\LICENSE"      >nul
 copy /y "README.md"     "dist\Clicky\README.md"    >nul
 

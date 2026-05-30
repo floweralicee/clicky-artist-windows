@@ -1,6 +1,6 @@
 from audio.playback import play_mp3_async
 from audio.tts.base_tts import BaseTTS
-from api import vercel_client
+from client import vercel_client
 
 
 class VercelTTSProvider(BaseTTS):

@@ -15,8 +15,8 @@ from typing import List, Optional
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
-from api import vercel_client
-from api.vercel_client import AuthError, NetworkError, PaywallError
+from client import vercel_client
+from client.vercel_client import AuthError, NetworkError, PaywallError
 from audio.ambient_listener import AmbientListener
 from screen.capture import capture_all_screens
 from ui.panel import AppState

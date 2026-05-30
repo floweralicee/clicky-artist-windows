@@ -1,0 +1,21 @@
+{
+  "name": "clicky-artist-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vercel dev",
+    "deploy": "vercel deploy --prod"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "latest",
+    "@vercel/node": "latest",
+    "ai": "latest",
+    "stripe": "latest"
+  },
+  "devDependencies": {
+    "typescript": "latest",
+    "vercel": "latest"
+  }
+}
+

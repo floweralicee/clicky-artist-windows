@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from api import vercel_client
+from client import vercel_client
 
 class PaywallScreen(QWidget):
     subscription_activated = pyqtSignal()
