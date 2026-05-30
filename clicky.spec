@@ -44,6 +44,7 @@ hidden = [
     "audio.tts.edge_tts_provider",
     "audio.tts.openai_tts_provider",
     "audio.tts.elevenlabs_provider",
+    "client.vercel_client",
 
     # Indirect deps
     "tiktoken_ext",

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from api import vercel_client
+from client import vercel_client
 from config import APP_VERSION
 
 
