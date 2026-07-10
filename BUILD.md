@@ -95,6 +95,16 @@ pip install --upgrade faster-whisper ctranslate2
 ```
 Then re-run `build.bat`.
 
+**`Failed to load Python DLL` on startup (找不到指定的模块)**
+This means either `python3XX.dll` or `vcruntime140.dll` is missing from
+`dist\Clicky\`.
+
+- Run `build.bat` again — the updated `clicky.spec` now bundles these DLLs
+  explicitly.
+- If the error persists on the target machine, install the Microsoft
+  Visual C++ 2015–2022 Redistributable manually:
+  https://aka.ms/vs/17/release/vc_redist.x64.exe
+
 **`ImportError: DLL load failed` at runtime on friend's PC**
 - Friend needs [Microsoft Visual C++ Redistributable](https://aka.ms/vs/17/release/vc_redist.x64.exe) (usually already installed on Windows 10/11)
 

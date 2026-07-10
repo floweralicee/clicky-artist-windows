@@ -74,8 +74,39 @@ Filename: "powershell.exe"; \
 Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent
 
 [Code]
+function VCRedistInstalled(): Boolean;
+begin
+  // vcruntime140_1.dll ships only with VC++ 2019+ Redistributable.
+  // Its presence means the runtime is already installed.
+  Result := FileExists(ExpandConstant('{sys}\vcruntime140_1.dll'));
+end;
+
+procedure InstallVCRedist();
+var
+  TmpFile: String;
+  ResultCode: Integer;
+begin
+  TmpFile := ExpandConstant('{tmp}\vc_redist.x64.exe');
+  if DownloadTemporaryFile(
+    'https://aka.ms/vs/17/release/vc_redist.x64.exe',
+    TmpFile, '', '') then
+  begin
+    Exec(TmpFile, '/install /quiet /norestart', '',
+         SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  end else
+    MsgBox('Could not download the Visual C++ Redistributable.' + #13 +
+           'If Clicky fails to start, install it manually from:' + #13 +
+           'https://aka.ms/vs/17/release/vc_redist.x64.exe',
+           mbInformation, MB_OK);
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
+  if CurStep = ssInstall then
+  begin
+    if not VCRedistInstalled() then
+      InstallVCRedist();
+  end;
   if CurStep = ssPostInstall then
   begin
     MsgBox(

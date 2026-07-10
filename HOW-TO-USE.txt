@@ -1,0 +1,188 @@
+================================================================================
+  CLICKY FOR ANIMATORS — HOW TO USE
+  (Simple step-by-step guide — no tech experience needed)
+================================================================================
+
+What is Clicky?
+---------------
+Clicky is a little blue helper that sits next to your mouse cursor.
+You hold a button on your keyboard, ask a question about your screen,
+and Clicky talks back — and can point at buttons and tools for you.
+
+It works with Maya, After Effects, Blender, Premiere, DaVinci Resolve,
+Toon Boom Harmony, and other apps you use every day.
+
+
+BEFORE YOU START
+----------------
+You need:
+  • A Windows 10 or Windows 11 computer (64-bit)
+  • A working microphone (built-in laptop mic is fine)
+  • An internet connection (for sign-up and AI answers)
+
+
+STEP 1 — DOWNLOAD AND UNZIP
+----------------------------
+1. Download clicky.zip from:
+     https://floweralice.me/download/clicky.zip
+
+2. Find the zip file in your Downloads folder.
+
+3. Right-click the zip file → "Extract All…" (or "解压全部").
+
+4. Choose a simple folder, for example:
+     C:\Users\YourName\Clicky
+
+5. Open that folder. You should see:
+     Clicky.exe          ← this is the app
+     HOW-TO-USE.txt      ← this file
+     HOW-TO-USE-中文.txt ← Chinese version of this guide
+
+
+STEP 2 — FIRST TIME YOU OPEN CLICKY
+------------------------------------
+1. Double-click Clicky.exe.
+
+2. If Windows shows a blue "Windows protected your PC" warning:
+     • Click "More info"
+     • Click "Run anyway"
+   (This is normal — the app is not from the Microsoft Store.)
+
+3. If Windows asks to use your microphone:
+     • Click "Yes" or "Allow"
+   Clicky needs your mic so you can talk to it.
+
+4. A sign-up window will appear.
+     • Click "Get started"
+     • Enter your email and a password
+     • Click "Create account"
+
+   Already have an account? Click "Already have an account? Sign in"
+
+
+STEP 3 — CLICKY IS RUNNING
+---------------------------
+After you sign in:
+
+  • A small blue dot appears near your mouse cursor.
+  • A blue circle icon appears in the bottom-right of your screen
+    (the system tray — click the ^ arrow if you don't see it).
+
+Clicky runs in the background. There is no big main window.
+That is normal.
+
+
+STEP 4 — ASK CLICKY A QUESTION
+-------------------------------
+This is the most important part!
+
+1. Open any app you want help with (Maya, After Effects, etc.).
+
+2. Hold these three keys at the same time:
+     Ctrl  +  Alt  +  Space
+   (Hold all three. Don't tap them one at a time.)
+
+3. While holding those keys, speak your question clearly.
+   For example:
+     "Where is the render settings button?"
+     "How do I add a keyframe here?"
+     "What does this panel do?"
+
+4. Let go of the keys when you are done talking.
+
+5. Wait a few seconds. Clicky will:
+     • Read your screen
+     • Think about your question
+     • Speak the answer out loud
+     • Move the blue dot to point at things on screen (when helpful)
+
+
+STEP 5 — OTHER WAYS TO TALK TO CLICKY
+--------------------------------------
+  • Say "Clicky" out loud (wake word) — then ask your question.
+    (You can turn this on or off from the tray menu.)
+
+  • Press Esc to stop Clicky if it is still talking.
+
+  • Say "next" or "continue" if Clicky gave you steps and you want
+    the next step.
+
+  • Say "repeat" to hear the last answer again.
+
+
+STEP 6 — THE SMALL PANEL AND TRAY MENU
+---------------------------------------
+Right-click the blue circle icon in the system tray (bottom-right).
+
+From the menu you can:
+  • Show Panel / Hide Panel — a small window with Clicky's status
+  • See how many free sessions you have left
+  • Sign out
+  • Quit — closes Clicky completely
+
+The panel shows things like:
+  "Listening…"  — Clicky heard you
+  "Thinking…"   — Clicky is working on your question
+  "Speaking…"   — Clicky is answering out loud
+
+
+FREE SESSIONS AND SUBSCRIPTION
+-------------------------------
+  • You get 10 free sessions when you sign up.
+  • Each time you ask Clicky a question, that uses one session.
+  • When your free sessions run out, Clicky will show a screen
+    offering a subscription for $10 per month.
+  • Click "Subscribe — $10/month" to pay in your web browser.
+  • After you pay, Clicky unlocks unlimited sessions automatically.
+
+
+TIPS FOR BEST RESULTS
+---------------------
+  • Speak clearly and keep questions short.
+  • Make sure the thing you are asking about is visible on screen.
+  • Use headphones if Clicky picks up its own voice from your speakers.
+  • Keep Clicky running — don't close it between questions.
+  • If the blue dot disappears, check the tray icon is still there.
+
+
+TROUBLESHOOTING
+---------------
+
+Problem: I don't see the tray icon
+  → Click the ^ (up arrow) next to the clock in the bottom-right.
+  → Look for a small blue circle.
+
+Problem: Clicky doesn't hear me
+  → Windows Settings → Privacy → Microphone
+  → Turn ON "Let desktop apps access your microphone"
+  → Make sure your mic is not muted in Windows sound settings.
+
+Problem: "Failed to load Python DLL" or app won't open
+  → Install this free Microsoft update, then try again:
+     https://aka.ms/vs/17/release/vc_redist.x64.exe
+  → If that doesn't help, download a fresh copy of clicky.zip.
+
+Problem: Sign-in or sign-up fails
+  → Check your internet connection.
+  → Try again in a minute.
+  → Make sure your password is at least 6 characters.
+
+Problem: Clicky says I've used all my free sessions
+  → Subscribe for $10/month from the screen Clicky shows you,
+    or sign in again if you already subscribed.
+
+Problem: Windows SmartScreen blocks the app
+  → Click "More info" → "Run anyway"
+
+
+NEED MORE HELP?
+---------------
+  Website:  https://floweralice.me/clicky
+  Email:    alice@animclaw.com
+
+
+================================================================================
+  Quick reminder:  Hold  Ctrl + Alt + Space  →  speak  →  let go
+================================================================================
+
+Made with love by 咕噜咕噜alice

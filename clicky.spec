@@ -79,6 +79,30 @@ for pkg in (
 hiddenimports += hidden
 hiddenimports += collect_submodules("PyQt6")
 
+import sys, os
+
+# Explicitly bundle the Python DLL.  PyInstaller's bootloader will fail with
+# "Failed to load Python DLL" if this is missing from the dist folder.
+# This is missed automatically when building from pyenv, conda, or a non-
+# standard Python install.
+_python_dll_path = os.path.join(
+    os.path.dirname(sys.executable),
+    f"python{sys.version_info.major}{sys.version_info.minor}.dll"
+)
+if os.path.exists(_python_dll_path):
+    binaries.append((_python_dll_path, "."))
+
+# Bundle the VC++ 2015-2022 runtime DLLs that Python links against.
+# Without these, users without the Redistributable installed see
+# 找不到指定的模块 ("the specified module could not be found").
+for _vcruntime_dll in [
+    r"C:\Windows\System32\vcruntime140.dll",
+    r"C:\Windows\System32\vcruntime140_1.dll",
+    r"C:\Windows\System32\msvcp140.dll",
+]:
+    if os.path.exists(_vcruntime_dll):
+        binaries.append((_vcruntime_dll, "."))
+
 
 a = Analysis(
     ["main.py"],

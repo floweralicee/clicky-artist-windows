@@ -63,7 +63,8 @@ echo [4/4] Bundling docs and env template...
 copy /y ".env.example" "dist\Clicky\.env.example" >nul
 if exist ".env" copy /y ".env" "dist\Clicky\.env" >nul
 copy /y "LICENSE"       "dist\Clicky\LICENSE"      >nul
-copy /y "README.md"     "dist\Clicky\README.md"    >nul
+copy /y "HOW-TO-USE.txt"       "dist\Clicky\HOW-TO-USE.txt"       >nul
+copy /y "HOW-TO-USE-中文.txt"  "dist\Clicky\HOW-TO-USE-中文.txt"  >nul
 
 echo.
 echo ================================================================
