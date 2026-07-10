@@ -14,6 +14,7 @@ venv/
 build/
 dist/
 *.spec.bak
+clicky-windows-artists.zip
 
 # Generated icon (rebuildable from assets/make_icon.py)
 assets/icon.ico

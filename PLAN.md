@@ -6,7 +6,7 @@ Runs as a thin Windows tray app: local voice capture and screen capture,
 with AI, auth, usage limits, payment, and TTS handled by the Vercel backend.
 
 Landing page: floweralice.me/clicky
-Download link: floweralice.me/download/clicky.zip
+Download link: floweralice.me/clicky/download/clicky-windows-artists.zip
 
 ## Target users
 - Animation students and professionals
@@ -236,7 +236,7 @@ Part 3 — Use it (3 min)
 
 ## How to distribute
 
-Host the zip at: floweralice.me/download/clicky.zip
+Host the zip at: floweralice.me/clicky/download/clicky-windows-artists.zip
 Link from the landing page download button.
 
 Deploy the Vercel backend first, then put its URL in the shipped .env.

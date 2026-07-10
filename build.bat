@@ -66,14 +66,26 @@ copy /y "LICENSE"       "dist\Clicky\LICENSE"      >nul
 copy /y "HOW-TO-USE.txt"       "dist\Clicky\HOW-TO-USE.txt"       >nul
 copy /y "HOW-TO-USE-中文.txt"  "dist\Clicky\HOW-TO-USE-中文.txt"  >nul
 
+REM ── 6. Create upload zip for floweralice.me ───────────────────────
+echo [5/5] Creating clicky-windows-artists.zip for website upload...
+if exist clicky-windows-artists.zip del /f /q clicky-windows-artists.zip
+powershell -NoProfile -Command "Compress-Archive -Path 'dist\Clicky' -DestinationPath 'clicky-windows-artists.zip' -Force"
+if errorlevel 1 (
+    echo [WARN] Could not create clicky-windows-artists.zip — upload dist\Clicky manually.
+) else (
+    echo     Upload clicky-windows-artists.zip to:
+    echo     www.floweralice.me/clicky/download/clicky-windows-artists.zip
+)
+
 echo.
 echo ================================================================
 echo   Portable build complete!
 echo   Run:  dist\Clicky\Clicky.exe
+echo   Zip:  clicky-windows-artists.zip  ^(upload to website^)
 echo ================================================================
 echo.
 
-REM ── 6. Optional: build Inno Setup installer ────────────────────────
+REM ── 7. Optional: build Inno Setup installer ────────────────────────
 if /i "%1"=="installer" (
     echo Building Inno Setup installer...
     where iscc >nul 2>&1

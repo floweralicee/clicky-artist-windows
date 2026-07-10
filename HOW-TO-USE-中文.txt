@@ -23,20 +23,28 @@ Toon Boom Harmony 等你日常使用的软件。
 
 第一步 — 下载并解压
 -------------------
-1. 从这里下载 clicky.zip：
-     https://floweralice.me/download/clicky.zip
+1. 打开 Clicky 网站：
+     https://www.floweralice.me/clicky
 
-2. 在「下载」文件夹里找到这个 zip 压缩包。
+2. 输入你的邮箱地址。
 
-3. 右键点击 zip 文件 → 选择「全部解压缩」。
+3. 点击「download windows」（下载 Windows 版）。
+   浏览器会保存文件：clicky-windows-artists.zip
 
-4. 解压到一个简单的文件夹，例如：
-     C:\Users\你的用户名\Clicky
+   直接下载链接（如果已经输入过邮箱）：
+     https://www.floweralice.me/clicky/download/clicky-windows-artists.zip
 
-5. 打开这个文件夹，你应该能看到：
+4. 在「下载」文件夹里找到这个 zip 压缩包。
+
+5. 右键点击 zip 文件 → 选择「全部解压缩」。
+
+6. 打开解压后出现的  Clicky  文件夹。
+
+7. 在 Clicky 文件夹里你应该能看到：
      Clicky.exe          ← 这就是应用程序
      HOW-TO-USE.txt      ← 英文版说明
      HOW-TO-USE-中文.txt ← 本文件（中文版）
+     （还有其他支持文件——这是正常的）
 
 
 第二步 — 第一次打开 Clicky
@@ -158,7 +166,8 @@ Clicky 在后台运行，没有大的主窗口。
 问题：打开时提示「Failed to load Python DLL」或无法启动
   → 先安装这个免费的微软组件，然后再试：
      https://aka.ms/vs/17/release/vc_redist.x64.exe
-  → 如果还不行，重新下载一份最新的 clicky.zip。
+  → 如果还不行，从这里重新下载最新版：
+     https://www.floweralice.me/clicky/download/clicky-windows-artists.zip
 
 问题：注册或登录失败
   → 检查网络连接。
@@ -175,7 +184,7 @@ Clicky 在后台运行，没有大的主窗口。
 
 需要更多帮助？
 --------------
-  网站：https://floweralice.me/clicky
+  网站：https://www.floweralice.me/clicky
   邮箱：alice@animclaw.com
 
 

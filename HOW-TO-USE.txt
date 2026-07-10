@@ -23,20 +23,28 @@ You need:
 
 STEP 1 — DOWNLOAD AND UNZIP
 ----------------------------
-1. Download clicky.zip from:
-     https://floweralice.me/download/clicky.zip
+1. Go to the Clicky website:
+     https://www.floweralice.me/clicky
 
-2. Find the zip file in your Downloads folder.
+2. Enter your email address.
 
-3. Right-click the zip file → "Extract All…" (or "解压全部").
+3. Click "download windows".
+   Your browser will save:  clicky-windows-artists.zip
 
-4. Choose a simple folder, for example:
-     C:\Users\YourName\Clicky
+   Direct link (if you already entered your email):
+     https://www.floweralice.me/clicky/download/clicky-windows-artists.zip
 
-5. Open that folder. You should see:
+4. Find the zip file in your Downloads folder.
+
+5. Right-click the zip file → "Extract All…" (or "解压全部").
+
+6. Open the folder called  Clicky  (created when you unzip).
+
+7. Inside the Clicky folder you should see:
      Clicky.exe          ← this is the app
      HOW-TO-USE.txt      ← this file
      HOW-TO-USE-中文.txt ← Chinese version of this guide
+     (and other support files — that is normal)
 
 
 STEP 2 — FIRST TIME YOU OPEN CLICKY
@@ -160,7 +168,8 @@ Problem: Clicky doesn't hear me
 Problem: "Failed to load Python DLL" or app won't open
   → Install this free Microsoft update, then try again:
      https://aka.ms/vs/17/release/vc_redist.x64.exe
-  → If that doesn't help, download a fresh copy of clicky.zip.
+  → If that doesn't help, download a fresh copy from:
+     https://www.floweralice.me/clicky/download/clicky-windows-artists.zip
 
 Problem: Sign-in or sign-up fails
   → Check your internet connection.
@@ -177,7 +186,7 @@ Problem: Windows SmartScreen blocks the app
 
 NEED MORE HELP?
 ---------------
-  Website:  https://floweralice.me/clicky
+  Website:  https://www.floweralice.me/clicky
   Email:    alice@animclaw.com
 
 

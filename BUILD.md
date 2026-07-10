@@ -17,14 +17,26 @@ build.bat
 
 That's it. After 2-5 minutes:
 ```
-dist\Clicky\Clicky.exe    ← hand this whole folder to your friend
+dist\Clicky\Clicky.exe              ← hand this whole folder to your friend
+clicky-windows-artists.zip          ← upload to floweralice.me
 ```
 
+### Upload to the website
+
+After `build.bat`, upload the zip to replace the live download:
+
+```
+www.floweralice.me/clicky/download/clicky-windows-artists.zip
+```
+
+Users get this file when they enter their email at [floweralice.me/clicky](https://www.floweralice.me/clicky) and click **download windows**.
+
 Your friend:
-1. Copies the `Clicky` folder anywhere on their PC
-2. (Optional) creates `.env` next to `Clicky.exe` with their API keys — see `.env.example`
+1. Goes to [floweralice.me/clicky](https://www.floweralice.me/clicky), enters email, clicks **download windows**
+2. Unzips `clicky-windows-artists.zip` and opens the `Clicky` folder
 3. Double-clicks `Clicky.exe`
-4. Tray icon appears, Clicky is running
+4. Reads `HOW-TO-USE.txt` or `HOW-TO-USE-中文.txt` if they need help
+5. Tray icon appears, Clicky is running
 
 **No Python needed on their machine.** Everything is bundled.
 

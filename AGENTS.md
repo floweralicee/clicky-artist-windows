@@ -21,7 +21,7 @@ exposed to users. Auto-update via PyUpdater so animators always have
 the latest version without re-downloading.
 
 Landing page: floweralice.me/clicky
-Download: floweralice.me/download/clicky.zip
+Download: floweralice.me/clicky/download/clicky-windows-artists.zip
 Target users: US-based animation artists using Maya, After Effects,
 Blender, Toon Boom Harmony, Premiere Pro, DaVinci Resolve, Nuke.
 
@@ -242,13 +242,18 @@ vercel deploy --prod
 ## What ships to animators
 
 ```
-Clicky-for-Animators/
-  Clicky.exe      ← built by PyInstaller
-  .env            ← contains only VERCEL_API_URL, no secrets
-  README.txt      ← two lines: watch video → run exe
+clicky-windows-artists.zip   ← upload to floweralice.me/clicky/download/
+  Clicky/
+    Clicky.exe               ← built by PyInstaller
+    _internal/               ← bundled Python + libraries
+    .env                     ← contains only VERCEL_API_URL, no secrets
+    HOW-TO-USE.txt           ← English setup guide
+    HOW-TO-USE-中文.txt      ← Chinese setup guide
 ```
 
-Upload zip to: floweralice.me/download/clicky.zip
+`build.bat` creates `clicky-windows-artists.zip` automatically after each build.
+
+Upload zip to: floweralice.me/clicky/download/clicky-windows-artists.zip
 
 .env contents (safe to ship, no secrets):
   VERCEL_API_URL=https://your-project.vercel.app
