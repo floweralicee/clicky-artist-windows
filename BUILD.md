@@ -9,6 +9,33 @@ Two ways to package Clicky for your friend's laptop:
 
 ---
 
+## Build in the cloud (no Windows PC needed)
+
+PyInstaller only builds for the OS it runs on, so a Mac cannot produce a
+working `Clicky.exe`. The [`Build Windows`](.github/workflows/build-windows.yml)
+GitHub Actions workflow builds it on a Windows runner for you.
+
+It runs automatically on every push to `main` that changes code, `clicky.spec`,
+`build.bat`, or the how-to guides. You can also trigger it manually:
+
+1. Go to the repo on GitHub → **Actions** tab
+2. Pick **Build Windows** → **Run workflow**
+3. When it finishes (~5-10 min), open the run and download the
+   **clicky-windows-artists** artifact — that is the ready-to-ship zip
+
+To cut a public release with a stable download URL, push a version tag:
+
+```bash
+git tag v1.1.3
+git push origin v1.1.3
+```
+
+The workflow then attaches `clicky-windows-artists.zip` to a GitHub Release.
+Download it, drop it into `clicky-artist-landing/download/`, and push to update
+the live site.
+
+---
+
 ## Quick build (portable folder)
 
 ```bat
